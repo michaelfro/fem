@@ -1,4 +1,4 @@
-#include "fem/linalg/Vector.hpp"
+#include <fem/linalg/Vector.hpp>
 #include <cassert>
 #include <cstddef>
 #include <vector>
@@ -7,13 +7,13 @@
 
 namespace fem::linalg::vector{
 
-    // Computes the vector sum out = w1*v1 + w2 * v2. out, v1 and v2 must be the same size.
-    void vector_sum(std::vector<double> &out, double w1, const std::vector<double> &v1, double w2, const std::vector<double> &v2) {
-        assert(out.size() == v1.size());
-        assert(out.size() == v2.size());
+    // Computes the vector sum res = w1 * v1 + w2 * v2. res, v1 and v2 must be the same size.
+    void vector_sum(double w1, const std::vector<double> &v1, double w2, const std::vector<double> &v2, std::vector<double> &res) {
+        assert(res.size() == v1.size());
+        assert(res.size() == v2.size());
 
-        for(std::size_t i = 0; i < out.size(); ++i){
-            out[i] = w1*v1[i] + w2*v2[i]; 
+        for(std::size_t i = 0; i < res.size(); ++i){
+            res[i] = w1*v1[i] + w2*v2[i]; 
         }
     }
 

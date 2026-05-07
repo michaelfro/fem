@@ -1,10 +1,11 @@
-#include "fem/linalg/CSRMatrix.hpp"
+#include <fem/linalg/CSRMatrix.hpp>
 #include <cmath>
 #include <cassert>
 #include <iostream>
+#include <cstddef>
 
 
-namespace fem::linalg::csr_matrix{
+namespace fem::linalg::matrix{
 
     /// Computes the matrix product result = matrix * x for a sparse matrix.
     void matrix_vector_product(const csr_matrix &matrix, const std::vector<double> &x, std::vector<double> &result) {
@@ -69,4 +70,64 @@ namespace fem::linalg::csr_matrix{
           }
     }
 
+
+    bool is_symmetric(const csr_matrix &matrix) {
+        size_t rows = matrix.row_index.size() - 1;
+
+        for (size_t i = 0; i < rows; ++i) {
+            size_t row_start = matrix.row_index[i];
+            size_t row_end = matrix.row_index[i + 1];
+
+            for (size_t j = row_start; j < row_end; ++j) {
+                size_t col = matrix.col_index[j];
+                double value = matrix.values[j];
+
+                // Check if the corresponding entry exists and matches
+                size_t col_start = matrix.row_index[col];
+                size_t col_end = matrix.row_index[col + 1];
+                bool found = false;
+
+                for (size_t k = col_start; k < col_end; ++k) {
+                    if (matrix.col_index[k] == i) {
+                        // Use a relative tolerance for floating-point comparison
+                        if (std::abs(matrix.values[k] - value) > 1e-12 * std::max(std::abs(matrix.values[k]), std::abs(value))) {
+                            return false; // Values do not match
+                        }
+                        found = true;
+                        break;
+                    }
+                }
+
+                if (!found) {
+                    return false; // Symmetric entry not found
+                }
+            }
+        }
+
+        return true;
+    }
+
+    csr_matrix make_poisson_1d(int n) {
+        csr_matrix A;
+        A.row_index.push_back(0);
+
+        for (int i = 0; i < n; ++i) { 
+            if (i > 0) {
+                A.col_index.push_back(i - 1);
+                A.values.push_back(-1.0);
+            }
+
+            A.col_index.push_back(i);
+            A.values.push_back(2.0);
+
+            if (i < n - 1) {
+                A.col_index.push_back(i + 1);
+                A.values.push_back(-1.0);
+            }
+
+            A.row_index.push_back(A.col_index.size());
+        }
+
+        return A;
+    }
 }
