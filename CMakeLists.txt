@@ -23,3 +23,4 @@ add_executable(poisson
     problems/poisson.cpp
 )
 
+target_link_libraries(poisson PRIVATE fem)

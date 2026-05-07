@@ -1,0 +1,72 @@
+#include "fem/linalg/CSRMatrix.hpp"
+#include <cmath>
+#include <cassert>
+#include <iostream>
+
+
+namespace fem::linalg::csr_matrix{
+
+    /// Computes the matrix product result = matrix * x for a sparse matrix.
+    void matrix_vector_product(const csr_matrix &matrix, const std::vector<double> &x, std::vector<double> &result) {
+        assert(x.size() == result.size());
+        assert(x.size() == matrix.row_index.size() - 1);
+        
+        //loop over rows
+        for(std::size_t i = 0; i < x.size(); ++i){
+            result[i] = 0.0;
+
+            const std::size_t start_index = matrix.row_index[i];
+            const std::size_t end_index = matrix.row_index[i + 1];
+
+            //loop over used non-zero entries of row i
+            for(std::size_t j = start_index; j < end_index; ++j){
+                result[i] += matrix.values.at(j) * x[matrix.col_index[j]];
+            }
+        }
+    }
+
+
+    void get_triu(const csr_matrix &matrix, csr_matrix &U){
+        return;
+    }
+
+
+    void get_tril(const csr_matrix &matrix, csr_matrix &L){
+        return;
+    }
+
+    void print(const csr_matrix &matrix){
+          // Infer the number of rows and columns assuming it is a square matrix
+          size_t rows = matrix.row_index.size() - 1;
+          size_t cols = rows;
+
+          // Print the dense matrix directly without storing it
+          // std::cout << "Dense Matrix Representation:\n";
+          for (size_t i = 0; i < rows; ++i)
+          {
+              size_t row_start = matrix.row_index[i];
+              size_t row_end = matrix.row_index[i + 1];
+              size_t current_col = 0;
+
+              for (size_t j = row_start; j < row_end; ++j)
+              {
+                  size_t col = matrix.col_index[j];
+                  while (current_col < col)
+                  {
+                      std::cout << "0 ";
+                      ++current_col;
+                  }
+                  std::cout << matrix.values[j] << " ";
+                  ++current_col;
+              }
+
+              while (current_col < cols)
+              {
+                  std::cout << "0 ";
+                  ++current_col;
+              }
+              std::cout << "\n";
+          }
+    }
+
+}

@@ -1,7 +1,11 @@
-#include"linalg/vector_ops.h"
+#include "fem/linalg/Vector.hpp"
+#include <cassert>
+#include <cstddef>
+#include <vector>
+#include <iostream>
+#include <cmath>
 
-namespace fem::linalg{
-
+namespace fem::linalg::vector{
 
     // Computes the vector sum out = w1*v1 + w2 * v2. out, v1 and v2 must be the same size.
     void vector_sum(std::vector<double> &out, double w1, const std::vector<double> &v1, double w2, const std::vector<double> &v2) {
@@ -13,7 +17,7 @@ namespace fem::linalg{
         }
     }
 
-    /// Computes the inner product v'w. v and w must be the same size.
+    // Computes the inner product v'w. v and w must be the same size.
     double inner_product(const std::vector<double> &v, const std::vector<double> &w) {
         assert(v.size() == w.size());
 
@@ -25,6 +29,12 @@ namespace fem::linalg{
     }
 
     double l2_norm(const std::vector<double> &v) {
-        return inner_product(v,v);
+        return std::sqrt(inner_product(v,v));
+    }
+
+    void print(const std::vector<double> &v) {
+        for (double d : v)
+            std::cout << d << " ";
+        std::cout << "\n";
     }
 }
