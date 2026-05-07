@@ -1,4 +1,4 @@
-cmake_minimum_requirement(VERSION 3.23)
+cmake_minimum_required(VERSION 3.23)
 
 project(2D_FEM)
 
@@ -20,6 +20,6 @@ add_library(fem ${FEM_SOURCES})
 target_include_directories(fem PUBLIC include)
 
 add_executable(poisson
-    apps/poisson.cpp
+    problems/poisson.cpp
 )
 
