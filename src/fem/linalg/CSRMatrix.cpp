@@ -3,6 +3,7 @@
 #include <cassert>
 #include <iostream>
 #include <cstddef>
+#include <vector>
 
 
 namespace fem::linalg::matrix{
@@ -26,14 +27,108 @@ namespace fem::linalg::matrix{
         }
     }
 
+    csr_matrix get_tril(const csr_matrix &matrix){
+        std::vector<double> values;
+        std::vector<size_t> row_index;
+        std::vector<size_t> col_index;
 
-    void get_triu(const csr_matrix &matrix, csr_matrix &U){
-        return;
+        row_index.push_back(0);
+
+        //loop over rows
+        for(std::size_t i = 0; i < matrix.row_index.size() - 1; ++i){
+
+            const std::size_t start_index = matrix.row_index[i];
+            const std::size_t end_index = matrix.row_index[i + 1];
+            int counter = 0;
+            //loop over non-zero entries of row i
+            for(std::size_t j = start_index; j < end_index; ++j){
+               
+               if (i > matrix.col_index[j]){
+                  values.push_back(matrix.values[j]);
+                  col_index.push_back(matrix.col_index[j]);
+                  counter += 1; 
+               }
+            }
+            row_index.push_back(row_index[i] + counter);
+        }
+
+
+        csr_matrix U; 
+        U.values = values;
+        U.row_index = row_index; 
+        U.col_index = col_index;
+
+        return U;
     }
 
+    csr_matrix get_triu(const csr_matrix &matrix){
+        std::vector<double> values;
+        std::vector<size_t> row_index;
+        std::vector<size_t> col_index;
 
-    void get_tril(const csr_matrix &matrix, csr_matrix &L){
-        return;
+        row_index.push_back(0);
+
+        //loop over rows
+        for(std::size_t i = 0; i < matrix.row_index.size() - 1; ++i){
+
+            const std::size_t start_index = matrix.row_index[i];
+            const std::size_t end_index = matrix.row_index[i + 1];
+            int counter = 0;
+            //loop over non-zero entries of row i
+            for(std::size_t j = start_index; j < end_index; ++j){
+               
+               if (i < matrix.col_index[j]){
+                  values.push_back(matrix.values[j]);
+                  col_index.push_back(matrix.col_index[j]);
+                  counter += 1; 
+               }
+            }
+            row_index.push_back(row_index[i] + counter);
+        }
+
+               // matrix.values.at(j);
+
+        csr_matrix U; 
+        U.values = values;
+        U.row_index = row_index; 
+        U.col_index = col_index;
+
+        return U;
+    }
+
+    
+    csr_matrix get_diag(const csr_matrix &matrix) {
+        std::vector<double> values;
+        std::vector<size_t> row_index;
+        std::vector<size_t> col_index;
+
+        row_index.push_back(0);
+
+        //loop over rows
+        for(std::size_t i = 0; i < matrix.row_index.size() - 1; ++i){
+
+            const std::size_t start_index = matrix.row_index[i];
+            const std::size_t end_index = matrix.row_index[i + 1];
+            int counter = 0;
+            //loop over non-zero entries of row i
+            for(std::size_t j = start_index; j < end_index; ++j){
+               if (i == matrix.col_index[j]){
+                  values.push_back(matrix.values[j]);
+                  col_index.push_back(matrix.col_index[j]);
+                  counter += 1; 
+               }
+            }
+            row_index.push_back(row_index[i] + counter);
+        }
+
+
+        csr_matrix U; 
+        U.values = values;
+        U.row_index = row_index; 
+        U.col_index = col_index;
+
+        return U;
+
     }
 
     void print(const csr_matrix &matrix){

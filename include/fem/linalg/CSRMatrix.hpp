@@ -13,8 +13,9 @@ namespace fem::linalg::matrix{
     };
 
     void matrix_vector_product(const csr_matrix &matrix, const std::vector<double> &x, std::vector<double> &result); 
-    void get_triu(const csr_matrix &matrix, csr_matrix &U);
-    void get_tril(const csr_matrix &matrix, csr_matrix &L); // also diagonal for Jacobi preconditioner would be nice
+    csr_matrix get_triu(const csr_matrix &matrix);
+    csr_matrix get_tril(const csr_matrix &matrix); 
+    csr_matrix get_diag(const csr_matrix &matrix);
     void print(const csr_matrix &matrix);
     bool is_symmetric(const csr_matrix &matrix);
     csr_matrix make_poisson_1d(const int n);
