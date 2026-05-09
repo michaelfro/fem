@@ -150,18 +150,18 @@ lin_system assemble_system(const fem::mesh::triangular_2d::Mesh mesh) {
     // std::sort magic to sort first by row then column
     std::sort(local_contributions.begin(),local_contributions.end(),[](const triplet& a, const triplet& b)
         {
-            if (a.global_row != b.global_row)
-                return a.global_row < b.global_row;
+            if (a.global_row == b.global_row)
+                return a.global_col < b.global_col;
 
-            return a.global_col < b.global_col;
+            return a.global_row < b.global_row;
         });
 
-    //debug print of sorted local_contributions:
+    // debug print of sorted local_contributions:
     // std::cout << "Local contribution triplets:\n";
     // for (auto i : local_contributions) {
     //     std::cout << i.global_row << " " << i.global_col << " " << i.contribution << "\n";
     // }
-    
+
     // compress duplicate indice pairs of sorted local_contributions
     std::vector<triplet> compressed; 
 
@@ -180,7 +180,7 @@ lin_system assemble_system(const fem::mesh::triangular_2d::Mesh mesh) {
         }
         if(std::abs(sum) > 1e-12) // save storage in the case the sum is zero
             compressed.push_back({r, c, sum});
-        i = j; // avoid counting the ones we looped over in the while loop twice
+        i = j - 1; // avoid counting the ones we looped over in the while loop twice
     }
 
     //debug print of compressed local_contributions:
@@ -228,7 +228,6 @@ double analytical_solution(const double x, const double y) {
 
 double discrete_l2_error(const fem::mesh::triangular_2d::Mesh mesh, const std::vector<double> &approx_sol)
 {
-    double h = 1 / std::pow(mesh.nodes.size(),1./2.);
     double sum = 0;
     for (size_t i = 0; i < mesh.nodes.size(); ++i) {
             double x = mesh.nodes[i][0]; 
@@ -239,7 +238,7 @@ double discrete_l2_error(const fem::mesh::triangular_2d::Mesh mesh, const std::v
             sum += err * err;
     }
     
-    return std::pow(sum * h * h, 1./2.);
+    return std::pow(sum, 1./2.);
 }
 
 
@@ -263,16 +262,9 @@ int main(){
 
   // fem::linalg::print_csr_matrix(stiffness_matrix);
   
-  // std::cout << "Is the matrix symmetric? " << fem::linalg::is_symmetric(stiffness_matrix) << "\n"; 
-
-  // for (auto i: stiffness_matrix.values) {
-  //     std::cout << i << ", ";
-  // }
-  // std::cout << "\n";
-
   fem::linalg::cg::solution solution = fem::linalg::cg::CG(stiffness_matrix, rhs, max_iterations, reduction_factor);
 
-  std::cout << "Error in l2 norm: " << discrete_l2_error(mesh, solution.solution) << "\n"; 
+  std::cout << "Error in nodal l2 norm: " << discrete_l2_error(mesh, solution.solution) << "\n"; 
 
   // fem::io::write_solution(solution, mesh);
 
