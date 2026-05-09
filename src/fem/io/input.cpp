@@ -47,8 +47,8 @@ namespace fem::io{
                 ss >> temp >> number_polys >> temp; 
 
                 for (int i = 0; i < number_polys; ++i) {
-                    int a, b, c;
-                    file >> a >> b >> c;
+                    int vertex_count, a, b, c;
+                    file >> vertex_count >> a >> b >> c;
                     elements.push_back({a,b,c});
                 }
 

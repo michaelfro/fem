@@ -9,6 +9,7 @@
 #include <cmath>
 #include <array>
 #include <algorithm>
+#include <cassert>
 
 struct triplet {
     size_t global_row;
@@ -45,7 +46,7 @@ void employ_boundary_conditions(std::vector<double>& rhs, const fem::mesh::trian
 
 local_result local_contribution(const fem::mesh::triangular_2d::Mesh mesh) {
 
-    std::vector<double> rhs(mesh.elements.size(),0.);
+    std::vector<double> rhs(mesh.nodes.size(),0.);
     std::vector<triplet> local_contributions;
 
     for (auto ele : mesh.elements) {
@@ -64,16 +65,19 @@ local_result local_contribution(const fem::mesh::triangular_2d::Mesh mesh) {
             {y2 - y1, y3 - y1}
           };
 
-          double det_J = J[0][0] * J[1][1]- J[1][0] * J[0][1];
+          double det_J = J[0][0] * J[1][1] - J[1][0] * J[0][1];
+
+          assert (std::abs(det_J) > 1e-12);
+
           double area = std::abs(det_J) * 0.5;
 
           // Inverted transposed Jacobian:
           double inv_J_transposed[2][2];
 
-          inv_J_transposed[0][0] = J[0][0] / det_J;
-          inv_J_transposed[0][1] = -J[0][0] / det_J;
-          inv_J_transposed[1][0] = -J[1][0] / det_J;
-          inv_J_transposed[1][1] = J[1][1] / det_J;
+          inv_J_transposed[0][0] = J[1][1] / det_J;
+          inv_J_transposed[0][1] = -J[1][0] / det_J;
+          inv_J_transposed[1][0] = -J[0][1] / det_J;
+          inv_J_transposed[1][1] = J[0][0] / det_J;
           
           // reference Gradients:
           double grad_ref[3][2] = {
@@ -92,13 +96,16 @@ local_result local_contribution(const fem::mesh::triangular_2d::Mesh mesh) {
           }
           
           // local stiffness matrix
+
+          // double K_e[3][3];
+
           for (int k = 0; k < 3; ++k){
               for(int k_dash = 0; k_dash < 3; ++k_dash){
                   // dot = grad_L_k dot grad_L_k_dash
                   double dot = grad_L[k][0] * grad_L[k_dash][0] + 
                                grad_L[k][1] * grad_L[k_dash][1];
 
-                  // K_e [k][k'] = area * dot; local stiffness_matrix
+                  // K_e[k][k_dash] = area * dot; // local stiffness_matrix
                   triplet triplet;
                   triplet.contribution = area*dot;
                   triplet.global_row = ele[k];
@@ -106,6 +113,17 @@ local_result local_contribution(const fem::mesh::triangular_2d::Mesh mesh) {
                   local_contributions.push_back(triplet);
               }
           }
+
+          // debug print the local stiffness_matrices
+          // for (int k = 0; k < 3; ++k){
+          //    for(int k_dash = 0; k_dash < 3; ++k_dash){
+          //      std::cout << K_e[k][k_dash] << ", ";
+          //    }
+          //    std::cout << "\n";
+          // }
+          // std::cout << "\n";
+          
+
           // rhs contribution
           // compute centroid of element:
           double c [2];
@@ -137,8 +155,14 @@ lin_system assemble_system(const fem::mesh::triangular_2d::Mesh mesh) {
 
             return a.global_col < b.global_col;
         });
+
+    //debug print of sorted local_contributions:
+    // std::cout << "Local contribution triplets:\n";
+    // for (auto i : local_contributions) {
+    //     std::cout << i.global_row << " " << i.global_col << " " << i.contribution << "\n";
+    // }
     
-    // compress duplicate indice pairs
+    // compress duplicate indice pairs of sorted local_contributions
     std::vector<triplet> compressed; 
 
     for (size_t i = 0; i < local_contributions.size(); ++i) {
@@ -154,10 +178,18 @@ lin_system assemble_system(const fem::mesh::triangular_2d::Mesh mesh) {
             sum += local_contributions[j].contribution;
             ++j;
         }
-        compressed.push_back({r, c, sum});
-        i = j;
+        if(std::abs(sum) > 1e-12) // save storage in the case the sum is zero
+            compressed.push_back({r, c, sum});
+        i = j; // avoid counting the ones we looped over in the while loop twice
     }
 
+    //debug print of compressed local_contributions:
+    // std::cout << "compressed contribution triplets:\n";
+    // for (auto i : compressed) {
+    //     std::cout << i.global_row << " " << i.global_col << " " << i.contribution << "\n";
+    // }
+
+    // assemble global stiffness_matrix from compressed triplets
     std::vector<size_t> row_index;
     std::vector<size_t> col_index;
     std::vector<double> values;
@@ -165,19 +197,24 @@ lin_system assemble_system(const fem::mesh::triangular_2d::Mesh mesh) {
     col_index.reserve(compressed.size());
     row_index.reserve(compressed.size()+1);
 
+    row_index.push_back(0);
+
     size_t r = 0;
     size_t counter = 0;
 
     for (auto triplet : compressed) {
+
         if (triplet.global_row > r) { 
-            r = triplet.global_row;
             row_index.push_back(row_index[r] + counter);
+            r = triplet.global_row;
             counter = 0;
         }
+
         col_index.push_back(triplet.global_col);
         values.push_back(triplet.contribution);
-        
+        ++counter;
     }
+    row_index.push_back(row_index[r] + counter);
 
     fem::linalg::csr_matrix stiffness_matrix = {values, col_index, row_index};
     employ_boundary_conditions(rhs,mesh);
@@ -185,12 +222,32 @@ lin_system assemble_system(const fem::mesh::triangular_2d::Mesh mesh) {
     return {stiffness_matrix, rhs};
 }
 
+double analytical_solution(const double x, const double y) {
+    return -0.5 * (x * x - 1) * (y * y - 1);
+}
+
+double discrete_l2_error(const fem::mesh::triangular_2d::Mesh mesh, const std::vector<double> &approx_sol)
+{
+    double h = 1 / std::pow(mesh.nodes.size(),1./2.);
+    double sum = 0;
+    for (size_t i = 0; i < mesh.nodes.size(); ++i) {
+            double x = mesh.nodes[i][0]; 
+            double y = mesh.nodes[i][1];
+            double analytical = analytical_solution(x, y);
+            double numerical = approx_sol[i];
+            double err = numerical - analytical;
+            sum += err * err;
+    }
+    
+    return std::pow(sum * h * h, 1./2.);
+}
+
 
 int main(){ 
 
   fem::mesh::triangular_2d::Mesh mesh = fem::io::read_mesh_2d("../data/meshes/square.vtk"); // assumes you run the code from /build
-  std::cout << "Number of nodes in the mesh: " << mesh.nodes.size() << std::endl;
-  std::cout << "Number of elements in the mesh " << mesh.elements.size() << std::endl;
+  std::cout << "Number of nodes in the mesh: " << mesh.nodes.size() << "\n";
+  std::cout << "Number of elements in the mesh " << mesh.elements.size() << "\n";
 
   lin_system linear_system = assemble_system(mesh);
   std::vector<double> rhs = linear_system.rhs;
@@ -199,9 +256,25 @@ int main(){
   size_t max_iterations = 10000;
   double reduction_factor = 10e-10;
 
-  fem::linalg::cg::solution solution = fem::linalg::cg::CG(stiffness_matrix, rhs, max_iterations, reduction_factor);
+  std::cout << "Number of entries in stiffness matrix " << stiffness_matrix.values.size() 
+            << " number of entries in row_index: " << stiffness_matrix.row_index.size() 
+            << " and number of entries in col_index " << stiffness_matrix.col_index.size()
+            << " size of rhs: " << rhs.size() << "\n";
+
+  // fem::linalg::print_csr_matrix(stiffness_matrix);
   
-  fem::io::write_solution(solution, mesh);
+  // std::cout << "Is the matrix symmetric? " << fem::linalg::is_symmetric(stiffness_matrix) << "\n"; 
+
+  // for (auto i: stiffness_matrix.values) {
+  //     std::cout << i << ", ";
+  // }
+  // std::cout << "\n";
+
+  fem::linalg::cg::solution solution = fem::linalg::cg::CG(stiffness_matrix, rhs, max_iterations, reduction_factor);
+
+  std::cout << "Error in l2 norm: " << discrete_l2_error(mesh, solution.solution) << "\n"; 
+
+  // fem::io::write_solution(solution, mesh);
 
   return 0;
 }
