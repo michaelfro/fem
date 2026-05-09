@@ -36,7 +36,7 @@ void employ_boundary_conditions(std::vector<double>& rhs, const fem::mesh::trian
     for (size_t i = 0; i < rhs.size(); ++i) {
        double eps = 1e-12;
        if  (std::abs(mesh.nodes[i][0] - 1) <= eps || std::abs(mesh.nodes[i][0] + 1) <= eps 
-            || std::abs(mesh.nodes[i][1] - 1) <= eps || std::abs(mesh.nodes[i][1] +1)<= eps)
+            || std::abs(mesh.nodes[i][1] - 1) <= eps || std::abs(mesh.nodes[i][1] +1) <= eps)
        {
           rhs[i] = 0.;
        }
@@ -48,6 +48,7 @@ local_result local_contribution(const fem::mesh::triangular_2d::Mesh mesh) {
 
     std::vector<double> rhs(mesh.nodes.size(),0.);
     std::vector<triplet> local_contributions;
+    local_contributions.reserve(9 * mesh.elements.size());
 
     for (auto ele : mesh.elements) {
           // three corner nodes of the current element:
@@ -226,7 +227,7 @@ double analytical_solution(const double x, const double y) {
     return -0.5 * (x * x - 1) * (y * y - 1);
 }
 
-double discrete_l2_error(const fem::mesh::triangular_2d::Mesh mesh, const std::vector<double> &approx_sol)
+double discrete_l2_error(const fem::mesh::triangular_2d::Mesh mesh, const std::vector<double> &approx_sol) //todo move this somewhere else - to the vector stuff?
 {
     double sum = 0;
     for (size_t i = 0; i < mesh.nodes.size(); ++i) {
