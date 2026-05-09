@@ -12,3 +12,6 @@ Makefile
 
 *.exe
 *.out
+
+# paraview stuff
+*.btr
