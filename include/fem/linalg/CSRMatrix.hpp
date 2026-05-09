@@ -3,7 +3,7 @@
 #include <vector>
 #include <cstddef>
 
-namespace fem::linalg::matrix{
+namespace fem::linalg{
 
     struct csr_matrix {
         std::vector<double> values;
@@ -16,7 +16,7 @@ namespace fem::linalg::matrix{
     csr_matrix get_triu(const csr_matrix &matrix);
     csr_matrix get_tril(const csr_matrix &matrix); 
     csr_matrix get_diag(const csr_matrix &matrix);
-    void print(const csr_matrix &matrix);
+    void print_csr_matrix(const csr_matrix &matrix);
     bool is_symmetric(const csr_matrix &matrix);
     csr_matrix make_poisson_1d(const int n);
     // Do I need norm or condition number?

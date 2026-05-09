@@ -1,12 +1,12 @@
-#include <fem/linalg/CG.hpp>
+#include <fem/linalg/cg.hpp>
 #include <fem/linalg/CSRMatrix.hpp>
 #include <fem/linalg/Vector.hpp>
 #include <cstddef> 
 #include <cmath>
 #include <iostream>
 
-using fem::linalg::matrix::csr_matrix;
-using fem::linalg::matrix::matrix_vector_product;
+using fem::linalg::csr_matrix;
+using fem::linalg::matrix_vector_product;
 using fem::linalg::vector::inner_product;
 
 namespace fem::linalg::cg{
@@ -160,7 +160,7 @@ namespace fem::linalg::cg{
         A.col_index = {0, 1, 0, 1, 2, 1, 2, 3, 2, 3};
         A.row_index = {0, 2, 5, 8, 10};
         std::cout << "Matrix A:" << std::endl;
-        fem::linalg::matrix::print(A);
+        fem::linalg::print_csr_matrix(A);
         // Define the right-hand side vector b
         std::vector<double> b = {1, 2, 2, 1};
 
@@ -180,7 +180,7 @@ namespace fem::linalg::cg{
 
     void test_pcg() {
         int n = 100;
-        csr_matrix A = fem::linalg::matrix::make_poisson_1d(n);
+        csr_matrix A = fem::linalg::make_poisson_1d(n);
         // print(A);
         std::vector<double> x_true(n, 1.0);
 

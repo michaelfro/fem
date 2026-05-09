@@ -6,7 +6,7 @@
 #include <vector>
 
 
-namespace fem::linalg::matrix{
+namespace fem::linalg{
 
     /// Computes the matrix product result = matrix * x for a sparse matrix.
     void matrix_vector_product(const csr_matrix &matrix, const std::vector<double> &x, std::vector<double> &result) {
@@ -131,7 +131,7 @@ namespace fem::linalg::matrix{
 
     }
 
-    void print(const csr_matrix &matrix){
+    void print_csr_matrix(const csr_matrix &matrix){
           // Infer the number of rows and columns assuming it is a square matrix
           size_t rows = matrix.row_index.size() - 1;
           size_t cols = rows;

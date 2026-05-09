@@ -1,4 +1,4 @@
-#include <fem/io/MeshImporter.hpp>
+#include <fem/io/input.hpp>
 #include <vector>
 #include <string>
 #include <fstream>
@@ -6,9 +6,11 @@
 #include <stdexcept>
 #include <iostream>
 
-namespace fem::mesh::triangular_2d{
+using fem::mesh::triangular_2d::Mesh;
 
-    Mesh read (const std::string& filename) {
+namespace fem::io{
+
+    Mesh read_mesh_2d (const std::string& filename) {
         
         std::vector<std::array<double,2>> nodes;
         std::vector<std::array<int,3>> elements;
