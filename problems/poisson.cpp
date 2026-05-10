@@ -275,7 +275,7 @@ int main(){
 
   std::cout << "Error in nodal l2 norm: " << nodal_l2_error(mesh, solution.solution) << "\n"; 
 
-  fem::io::write_solution(solution, mesh, analytical_solution);
+  fem::io::write_solution_csv_2d(solution, mesh,"poisson_dirchlet_2d.csv");
 
   return 0;
 }

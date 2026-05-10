@@ -1,4 +1,5 @@
 #pragma once
+#include <array>
 
 namespace fem::mesh::triangular_2d{
     struct Mesh { // templates for dimension independence?
