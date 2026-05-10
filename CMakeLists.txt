@@ -2,8 +2,8 @@ cmake_minimum_required(VERSION 3.23)
 
 project(2D_FEM)
 
-set(CMAKE_CXX_STANDART 20)
-set(CMAKE_CXX_STANDART_REQUIRED ON)
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 add_compile_options(
   -Wall
