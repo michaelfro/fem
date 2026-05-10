@@ -1,0 +1,7 @@
+Make ifdef debug prints to clean up the debug stuff I left in comments
+Document every function in the library part
+implement make run, make debug in the CML file
+Clean up some naming convenctions (Vector and stuff; I'd prefer dot() over inner_product etc)
+
+Maybe: Change to proper OOP with templates - after my programming course!
+

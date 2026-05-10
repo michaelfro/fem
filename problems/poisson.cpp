@@ -31,14 +31,18 @@ double f(const double x, const double y) {
     return x*x + y*y - 2;
 }
 
-void employ_boundary_conditions(std::vector<double>& rhs, const fem::mesh::triangular_2d::Mesh mesh){ // homogenous dirichlet boundary conditions
+void employ_boundary_conditions(std::vector<double>& rhs, fem::linalg::csr_matrix& stiffness_matrix, const fem::mesh::triangular_2d::Mesh mesh){ // homogenous dirichlet boundary conditions
     
     for (size_t i = 0; i < rhs.size(); ++i) {
        double eps = 1e-12;
        if  (std::abs(mesh.nodes[i][0] - 1) <= eps || std::abs(mesh.nodes[i][0] + 1) <= eps 
             || std::abs(mesh.nodes[i][1] - 1) <= eps || std::abs(mesh.nodes[i][1] +1) <= eps)
        {
+          // for a boundary node change rhs and row in the stiffness_matrix - this might break symmetry?
           rhs[i] = 0.;
+          for (size_t k = stiffness_matrix.row_index[i]; k < stiffness_matrix.row_index[i+1]; ++k) {
+              stiffness_matrix.values[k] = (stiffness_matrix.col_index[k] == i) ? 1. : 0.;
+          }
        }
     }
     return;
@@ -218,7 +222,8 @@ lin_system assemble_system(const fem::mesh::triangular_2d::Mesh mesh) {
     row_index.push_back(row_index[r] + counter);
 
     fem::linalg::csr_matrix stiffness_matrix = {values, col_index, row_index};
-    employ_boundary_conditions(rhs,mesh);
+
+    employ_boundary_conditions(rhs,stiffness_matrix,mesh);
 
     return {stiffness_matrix, rhs};
 }
@@ -227,7 +232,7 @@ double analytical_solution(const double x, const double y) {
     return -0.5 * (x * x - 1) * (y * y - 1);
 }
 
-double discrete_l2_error(const fem::mesh::triangular_2d::Mesh mesh, const std::vector<double> &approx_sol) //todo move this somewhere else - to the vector stuff?
+double nodal_l2_error(const fem::mesh::triangular_2d::Mesh mesh, const std::vector<double> &approx_sol) //todo move this somewhere else - to the vector stuff?
 {
     double sum = 0;
     for (size_t i = 0; i < mesh.nodes.size(); ++i) {
@@ -256,18 +261,21 @@ int main(){
   size_t max_iterations = 10000;
   double reduction_factor = 10e-10;
 
-  std::cout << "Number of entries in stiffness matrix " << stiffness_matrix.values.size() 
-            << " number of entries in row_index: " << stiffness_matrix.row_index.size() 
-            << " and number of entries in col_index " << stiffness_matrix.col_index.size()
-            << " size of rhs: " << rhs.size() << "\n";
+  std::cout << "Number of entries in stiffness matrix " << stiffness_matrix.values.size() << "\n" 
+            << "Number of entries in row_index: " << stiffness_matrix.row_index.size() << "\n" 
+            << "Number of entries in col_index " << stiffness_matrix.col_index.size() << "\n"
+            << "Size of rhs: " << rhs.size() << "\n";
 
   // fem::linalg::print_csr_matrix(stiffness_matrix);
   
+  std::cout << "Is the stiffness_matrix symmetric? " << fem::linalg::is_symmetric(stiffness_matrix) << "\n";
+  
   fem::linalg::cg::solution solution = fem::linalg::cg::CG(stiffness_matrix, rhs, max_iterations, reduction_factor);
+  std::cout << "Cg finished in " << solution.iterations << " iterations with a final residuum of " << solution.final_residuum << "\n";
 
-  std::cout << "Error in nodal l2 norm: " << discrete_l2_error(mesh, solution.solution) << "\n"; 
+  std::cout << "Error in nodal l2 norm: " << nodal_l2_error(mesh, solution.solution) << "\n"; 
 
-  // fem::io::write_solution(solution, mesh);
+  fem::io::write_solution(solution, mesh, analytical_solution);
 
   return 0;
 }

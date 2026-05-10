@@ -22,7 +22,7 @@ namespace fem::linalg::cg{
         std::vector<double> x;
         std::vector<double> r;
 
-        // I chose as an inital guess is the zero vector in the correct dimsension:
+        // I chose as an inital guess is the zero vector in the correct dimension:
         // this implies that r_0 is just b:
 
         for (size_t i = 0; i < rhs.size(); i++){
@@ -54,7 +54,13 @@ namespace fem::linalg::cg{
             std::vector<double> temp(x_0.size(),0.); // = Ap
             matrix_vector_product(matrix,p,temp);
 
-            alpha = rTr / inner_product(p,temp);
+            double pos_def_check = inner_product(p,temp);
+
+            // if (pos_def_check < 0) {
+            //     std::cout << "CG: Matrix is not positive definite\n";
+            // }
+
+            alpha = rTr / pos_def_check;
 
             fem::linalg::vector::vector_sum(1,x,alpha,p,x); 
             fem::linalg::vector::vector_sum(1.,r,-1. * alpha,temp,r);
