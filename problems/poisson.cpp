@@ -33,13 +33,24 @@ double f(const double x, const double y) {
 
 void employ_boundary_conditions(std::vector<double>& rhs, fem::linalg::csr_matrix& stiffness_matrix, const fem::mesh::triangular_2d::Mesh mesh){ // homogenous dirichlet boundary conditions
     
+    // it would be better to get rid of the dirichlet indices for performance..
+
     for (size_t i = 0; i < rhs.size(); ++i) {
        double eps = 1e-12;
        if  (std::abs(mesh.nodes[i][0] - 1) <= eps || std::abs(mesh.nodes[i][0] + 1) <= eps 
             || std::abs(mesh.nodes[i][1] - 1) <= eps || std::abs(mesh.nodes[i][1] +1) <= eps)
        {
-          // for a boundary node change rhs and row in the stiffness_matrix - this might break symmetry?
           rhs[i] = 0.;
+
+          // Change column entries to preserve symmetry, very expensive
+          // for (size_t idx = 0; idx < stiffness_matrix.values.size(); ++ idx) {
+          //     if (stiffness_matrix.col_index[k] == i) {
+          //         stiffness_matrix.values[k] = 0.;
+          //     }
+          // }
+          
+          
+          // for a boundary node change rhs and row in the stiffness_matrix - this breaks symmetry
           for (size_t k = stiffness_matrix.row_index[i]; k < stiffness_matrix.row_index[i+1]; ++k) {
               stiffness_matrix.values[k] = (stiffness_matrix.col_index[k] == i) ? 1. : 0.;
           }
@@ -169,6 +180,7 @@ lin_system assemble_system(const fem::mesh::triangular_2d::Mesh mesh) {
 
     // compress duplicate indice pairs of sorted local_contributions
     std::vector<triplet> compressed; 
+    compressed.reserve(local_contributions.size()); // can be improved right?
 
     for (size_t i = 0; i < local_contributions.size(); ++i) {
         size_t r = local_contributions[i].global_row;
