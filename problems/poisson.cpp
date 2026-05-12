@@ -255,8 +255,9 @@ double nodal_l2_error(const fem::mesh::triangular_2d::Mesh mesh, const std::vect
             double err = numerical - analytical;
             sum += err * err;
     }
+    double domain_volume = 4.; // todo make this depend on the mesh?
     
-    return std::pow(sum / mesh.nodes.size(), 1./2.);
+    return std::pow((sum * domain_volume)/ mesh.nodes.size(), 1./2.);
 }
 
 
