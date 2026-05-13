@@ -81,11 +81,11 @@ local_result local_contribution(const fem::mesh::triangular_2d::Mesh mesh) {
             {y2 - y1, y3 - y1}
           };
 
-          double det_J = J[0][0] * J[1][1] - J[1][0] * J[0][1];
+          const double det_J = J[0][0] * J[1][1] - J[1][0] * J[0][1];
 
           assert (std::abs(det_J) > 1e-12);
 
-          double area = std::abs(det_J) * 0.5;
+          const double area = std::abs(det_J) * 0.5;
 
           // Inverted transposed Jacobian:
           double inv_J_transposed[2][2];
@@ -148,7 +148,6 @@ local_result local_contribution(const fem::mesh::triangular_2d::Mesh mesh) {
           double f_c = f(c[0],c[1]);
           double val = (area / 3.0) * f_c;
             
-          // todo check if this is correct
           rhs[ele[0]] += val;
           rhs[ele[1]] += val;
           rhs[ele[2]] += val;
