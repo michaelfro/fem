@@ -20,7 +20,7 @@ add_library(fem ${FEM_SOURCES})
 target_include_directories(fem PUBLIC include)
 
 add_executable(poisson
-    problems/poisson.cpp
+    problems/bpx_poisson.cpp
 )
 
 target_link_libraries(poisson PRIVATE fem)

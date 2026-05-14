@@ -1,5 +1,5 @@
-import numpy as np 
-import matplotlib.pyplot as plt
+# import numpy as np 
+# import matplotlib.pyplot as plt
 # import meshio
 import pyvista as pv
 import pandas as pd

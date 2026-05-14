@@ -31,7 +31,7 @@ double f(const double x, const double y) {
     return x*x + y*y - 2;
 }
 
-void employ_boundary_conditions(std::vector<double>& rhs, fem::linalg::csr_matrix& stiffness_matrix, const fem::mesh::triangular_2d::Mesh mesh){ // homogenous dirichlet boundary conditions
+void impose_boundary_conditions(std::vector<double>& rhs, fem::linalg::csr_matrix& stiffness_matrix, const fem::mesh::triangular_2d::Mesh mesh){ // homogenous dirichlet boundary conditions
     
     // it would be better to get rid of the dirichlet indices for performance..
 
@@ -234,7 +234,7 @@ lin_system assemble_system(const fem::mesh::triangular_2d::Mesh mesh) {
 
     fem::linalg::csr_matrix stiffness_matrix = {values, col_index, row_index};
 
-    employ_boundary_conditions(rhs,stiffness_matrix,mesh);
+    impose_boundary_conditions(rhs,stiffness_matrix,mesh);
 
     return {stiffness_matrix, rhs};
 }
