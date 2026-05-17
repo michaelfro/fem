@@ -11,22 +11,6 @@
 #include <algorithm>
 #include <cassert>
 
-struct triplet {
-    size_t global_row;
-    size_t global_col; 
-    double contribution;
-};
-
-struct local_result {
-    std::vector<triplet> local_contributions;
-    std::vector<double> rhs;
-};
-
-struct lin_system {
-    fem::linalg::csr_matrix stiffness_matrix;
-    std::vector<double> rhs;
-};
-
 double f(const double x, const double y) {
     return x*x + y*y - 2;
 }
@@ -260,7 +244,7 @@ double nodal_l2_error(const fem::mesh::triangular_2d::Mesh mesh, const std::vect
 }
 
 
-int main(){ 
+int run_poisson_problem(){ 
 
   fem::mesh::triangular_2d::Mesh mesh = fem::io::read_mesh_2d("../data/meshes/square.vtk"); // assumes you run the code from /build
   std::cout << "Number of nodes in the mesh: " << mesh.nodes.size() << "\n";

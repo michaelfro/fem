@@ -11,343 +11,158 @@
 #include <array>
 #include <algorithm>
 #include <cassert>
+#include <map>
 
-struct triplet {
-    size_t global_row;
-    size_t global_col; 
-    double contribution;
-};
+using fem::problems::poisson::assemble_system;
+using fem::problems::poisson::lin_system;
+using fem::mesh::hierarchical::HierarchicalMesh;
+using fem::mesh::hierarchical::LevelData;
+using fem::linalg::csrmatrix;
 
-struct local_result {
-    std::vector<triplet> local_contributions;
-    std::vector<double> rhs;
-};
+HierarchicalMesh build_hierarchical_mesh(const std::vector<std::string>& vtk_files) { 
 
-struct lin_system {
-    fem::linalg::csr_matrix stiffness_matrix;
-    std::vector<double> rhs;
-};
-
-double f(const double x, const double y) {
-    return x*x + y*y - 2;
-}
-
-void impose_boundary_conditions(std::vector<double>& rhs, fem::linalg::csr_matrix& stiffness_matrix, const fem::mesh::triangular_2d::Mesh mesh){ // homogenous dirichlet boundary conditions
+    HierarchicalMesh hm;
     
-    // it would be better to get rid of the dirichlet indices for performance..
-
-    for (size_t i = 0; i < rhs.size(); ++i) {
-       double eps = 1e-12;
-       if  (std::abs(mesh.nodes[i][0] - 1) <= eps || std::abs(mesh.nodes[i][0] + 1) <= eps 
-            || std::abs(mesh.nodes[i][1] - 1) <= eps || std::abs(mesh.nodes[i][1] +1) <= eps)
-       {
-          rhs[i] = 0.;
-
-          // Change column entries to preserve symmetry, very expensive
-          // for (size_t idx = 0; idx < stiffness_matrix.values.size(); ++ idx) {
-          //     if (stiffness_matrix.col_index[k] == i) {
-          //         stiffness_matrix.values[k] = 0.;
-          //     }
-          // }
-          
-          
-          // for a boundary node change rhs and row in the stiffness_matrix - this breaks symmetry
-          for (size_t k = stiffness_matrix.row_index[i]; k < stiffness_matrix.row_index[i+1]; ++k) {
-              stiffness_matrix.values[k] = (stiffness_matrix.col_index[k] == i) ? 1. : 0.;
-          }
-       }
+    // Load all meshes
+    std::vector<fem::mesh::triangular_2d::Mesh> meshes;
+    for (auto& f : vtk_files)
+        meshes.push_back(fem::io::read_mesh_2d(f));
+    
+    hm.fine_mesh = meshes.back();
+    int n_fine = hm.fine_mesh.nodes.size();
+    
+    // Build coordinate lookup for finest mesh:
+    auto make_key = [](double x, double y) -> std::pair<long,long> {
+        return { std::llround(x * 1e10), 
+                 std::llround(y * 1e10) };
+    };
+    
+    std::map<std::pair<long,long>, int> fine_lookup;
+    for (int i = 0; i < n_fine; ++i) {
+        auto [x, y] = hm.fine_mesh.nodes[i];
+        fine_lookup[make_key(x, y)] = i;
     }
-    return;
-}
+    
+    hm.midpoints.resize(meshes.size() - 1);
+    
+    // loop over the meshes:
+    for (int k = 0; k < meshes.size(); ++k) {
+        auto& mesh_k = meshes[k];
+        int n_coarse = mesh_k.nodes.size();
+        
+        LevelData ld;
+        ld.level = k;
+        ld.n_nodes = n_coarse;
+        ld.coarse_to_fine.resize(n_coarse);
+        ld.fine_to_coarse.assign(n_fine, -1);
 
-local_result local_contribution(const fem::mesh::triangular_2d::Mesh mesh) {
+        // Compute inverse diagonal of coarse stiffness matrix
+        const auto coarse_matrix = assemble_system(coarse_mesh).stiffness_matrix; 
+        auto diag = fem::linalg::get_diag(coarse_matrix);
+        for (auto ele in diag) {
+            ele = 1 / ele;
+        }
+        ld.inv_diag = diag;
 
-    std::vector<double> rhs(mesh.nodes.size(),0.);
-    std::vector<triplet> local_contributions;
-    local_contributions.reserve(9 * mesh.elements.size());
-
-    for (auto ele : mesh.elements) {
-          // three corner nodes of the current element:
-          std::array <double,2> p1 = mesh.nodes[ele[0]];
-          std::array <double,2> p2 = mesh.nodes[ele[1]];
-          std::array <double,2> p3 = mesh.nodes[ele[2]];
-          
-          double x1 = p1[0], y1 = p1[1];
-          double x2 = p2[0], y2 = p2[1];
-          double x3 = p3[0], y3 = p3[1];
-
-          // Build Jacobian:
-          double J[2][2] = {
-            {x2 - x1, x3 - x1},
-            {y2 - y1, y3 - y1}
-          };
-
-          const double det_J = J[0][0] * J[1][1] - J[1][0] * J[0][1];
-
-          assert (std::abs(det_J) > 1e-12);
-
-          const double area = std::abs(det_J) * 0.5;
-
-          // Inverted transposed Jacobian:
-          double inv_J_transposed[2][2];
-
-          inv_J_transposed[0][0] = J[1][1] / det_J;
-          inv_J_transposed[0][1] = -J[1][0] / det_J;
-          inv_J_transposed[1][0] = -J[0][1] / det_J;
-          inv_J_transposed[1][1] = J[0][0] / det_J;
-          
-          // reference Gradients:
-          double grad_ref[3][2] = {
-              {-1, -1},
-              {1, 0},
-              {0, 1}
-          };
-
-          double grad_L[3][2]; // = inv_J_transposed.dot(grad_ref)
-
-          for (int i = 0; i < 3; ++i) {
-              grad_L[i][0] = inv_J_transposed[0][0] * grad_ref[i][0] + 
-                           inv_J_transposed[0][1] * grad_ref[i][1];
-              grad_L[i][1] = inv_J_transposed[1][0] * grad_ref[i][0] + 
-                           inv_J_transposed[1][1] * grad_ref[i][1];
-          }
-          
-          // local stiffness matrix
-
-          // double K_e[3][3];
-
-          for (int k = 0; k < 3; ++k){
-              for(int k_dash = 0; k_dash < 3; ++k_dash){
-                  // dot = grad_L_k dot grad_L_k_dash
-                  double dot = grad_L[k][0] * grad_L[k_dash][0] + 
-                               grad_L[k][1] * grad_L[k_dash][1];
-
-                  // K_e[k][k_dash] = area * dot; // local stiffness_matrix
-                  triplet triplet;
-                  triplet.contribution = area*dot;
-                  triplet.global_row = ele[k];
-                  triplet.global_col = ele[k_dash];
-                  local_contributions.push_back(triplet);
-              }
-          }
-
-          // debug print the local stiffness_matrices
-          // for (int k = 0; k < 3; ++k){
-          //    for(int k_dash = 0; k_dash < 3; ++k_dash){
-          //      std::cout << K_e[k][k_dash] << ", ";
-          //    }
-          //    std::cout << "\n";
-          // }
-          // std::cout << "\n";
-          
-
-          // rhs contribution
-          // compute centroid of element:
-          double c [2];
-          c[0] = (p1[0] + p2[0] + p3[0]) / 3;
-          c[1] = (p1[1] + p2[1] + p3[1]) / 3;
-          double f_c = f(c[0],c[1]);
-          double val = (area / 3.0) * f_c;
+        
+        // Map coarse nodes to fine nodes 
+        for (int i = 0; i < n_coarse; ++i) {
+            auto [x, y] = mesh_k.nodes[i];
+            auto key = make_key(x, y);
+            int fi = fine_lookup.at(key); 
+            ld.coarse_to_fine[i] = fi;
+            ld.fine_to_coarse[fi] = i;
+        }
+        
+        // Find midpoints introduced at this level transition
+        if (k + 1 < meshes.size()) {
+            auto& mesh_next = meshes[k+1];
             
-          rhs[ele[0]] += val;
-          rhs[ele[1]] += val;
-          rhs[ele[2]] += val;
-    }
-    return {local_contributions,rhs};
- }
-
-lin_system assemble_system(const fem::mesh::triangular_2d::Mesh mesh) {
-    
-    local_result local_res = local_contribution(mesh);
-
-    std::vector<triplet> local_contributions = local_res.local_contributions;
-    std::vector<double> rhs = local_res.rhs;
-
-    // std::sort magic to sort first by row then column
-    std::sort(local_contributions.begin(),local_contributions.end(),[](const triplet& a, const triplet& b)
-        {
-            if (a.global_row == b.global_row)
-                return a.global_col < b.global_col;
-
-            return a.global_row < b.global_row;
-        });
-
-    // debug print of sorted local_contributions:
-    // std::cout << "Local contribution triplets:\n";
-    // for (auto i : local_contributions) {
-    //     std::cout << i.global_row << " " << i.global_col << " " << i.contribution << "\n";
-    // }
-
-    // compress duplicate indice pairs of sorted local_contributions
-    std::vector<triplet> compressed; 
-    compressed.reserve(local_contributions.size()); // can be improved right?
-
-    for (size_t i = 0; i < local_contributions.size(); ++i) {
-        size_t r = local_contributions[i].global_row;
-        size_t c = local_contributions[i].global_col;
-        double sum = 0.;
-
-        size_t j = i;
-        while (j < local_contributions.size() 
-                  && local_contributions[j].global_row == r 
-                  && local_contributions[j].global_col == c) 
-        {
-            sum += local_contributions[j].contribution;
-            ++j;
+            // Build edge midpoint lookup from level k
+            std::map<std::pair<long,long>, std::pair<int,int>> midpoint_lookup;
+            for (auto& tri : mesh_k.elements) {
+                std::array<std::pair<int,int>,3> edges = {
+                    std::make_pair(tri[0], tri[1]),
+                    std::make_pair(tri[1], tri[2]),
+                    std::make_pair(tri[0], tri[2])
+                };
+                for (auto [a, b] : edges) {
+                    double mx = (mesh_k.nodes[a][0] + mesh_k.nodes[b][0]) / 2.0;
+                    double my = (mesh_k.nodes[a][1] + mesh_k.nodes[b][1]) / 2.0;
+                    midpoint_lookup[make_key(mx, my)] = {a, b};
+                }
+            }
+            
+            // Check which next-level nodes are midpoints
+            for (int i = 0; i < mesh_next.nodes.size(); ++i) {
+                auto [x, y] = mesh_next.nodes[i];
+                auto key = make_key(x, y);
+                if (midpoint_lookup.count(key)) {
+                    auto [p, q] = midpoint_lookup[key];
+                    int fi = fine_lookup.at(key);
+                    hm.midpoints[k].push_back({fi, p, q});
+                }
+            }
         }
-        if(std::abs(sum) > 1e-12) // save storage in the case the sum is zero
-            compressed.push_back({r, c, sum});
-        i = j - 1; // avoid counting the ones we looped over in the while loop twice
+        
+        hm.levels.push_back(std::move(ld)); // some nice optimization
     }
+    
+    return hm;
+}
 
-    //debug print of compressed local_contributions:
-    // std::cout << "compressed contribution triplets:\n";
-    // for (auto i : compressed) {
-    //     std::cout << i.global_row << " " << i.global_col << " " << i.contribution << "\n";
-    // }
+ auto create_bpx(HierarchicalMesh& hm) {
 
-    // assemble global stiffness_matrix from compressed triplets
-    std::vector<size_t> row_index;
-    std::vector<size_t> col_index;
-    std::vector<double> values;
-    values.reserve(compressed.size());
-    col_index.reserve(compressed.size());
-    row_index.reserve(compressed.size()+1);
+    std::vector<double> bpx(hm.fine_mesh.nodes.size(), 0.0);
 
-    row_index.push_back(0);
+    for(size_t level = 0; level < hm.levels.size(); ++level) {
+        
+        auto& ld = hm.levels[level]; // LevelData
 
-    size_t r = 0;
-    size_t counter = 0;
-
-    for (auto triplet : compressed) {
-
-        if (triplet.global_row > r) { 
-            row_index.push_back(row_index[r] + counter);
-            r = triplet.global_row;
-            counter = 0;
+        // Coarse contribution
+        for (size_t i = 0; i < ld.n_nodes; ++i) {
+            bpx[ld.coarses_to_fine[i]] += ld.inv_diag[i];
         }
 
-        col_index.push_back(triplet.global_col);
-        values.push_back(triplet.contribution);
-        ++counter;
-    }
-    row_index.push_back(row_index[r] + counter);
-
-    fem::linalg::csr_matrix stiffness_matrix = {values, col_index, row_index};
-
-    impose_boundary_conditions(rhs,stiffness_matrix,mesh);
-
-    return {stiffness_matrix, rhs};
-}
-
-double analytical_solution(const double x, const double y) {
-    return -0.5 * (x * x - 1) * (y * y - 1);
-}
-
-double nodal_l2_error(const fem::mesh::triangular_2d::Mesh mesh, const std::vector<double> &approx_sol) //todo move this somewhere else - to the vector stuff?
-{
-    double sum = 0;
-    for (size_t i = 0; i < mesh.nodes.size(); ++i) {
-            double x = mesh.nodes[i][0]; 
-            double y = mesh.nodes[i][1];
-            double analytical = analytical_solution(x, y);
-            double numerical = approx_sol[i];
-            double err = numerical - analytical;
-            sum += err * err;
-    }
-    double domain_volume = 4.; // todo make this depend on the mesh?
-    
-    return std::pow((sum * domain_volume)/ mesh.nodes.size(), 1./2.);
-}
-
-// std::vector<double> restriction(std::vector<double>& fine_vector) {
-//
-// }
-
-std::vector<double> prolongation(std::vector<double>& coarse_vector, size_t level) {
-
-    // It is piecewise linear on the grid of the l-th level, that means I skip over some nodes where I now need to add a reduced contribution
-    // I need to somehow know which nodes belong to which grid - abuse the ordering? 
-    // create a prolongation from one level to the next and iterate over it? 
-    // Easiest since I skip an exact number of nodes namely I skip exactly one node per vertex - here the value has to be 0.5 * value 
-
-    // from coarsest mesh to finest:
-    // for each node in current mesh: 
-    //     val = 1 / diag(node); I have a vector of all these values -> coares_vector
-    //     bpx[fine_idx[node.x,node.y]] = val 
-    //     midpoints = new all new nodes that where not in the prev ones
-    //     for all midpoints
-    //     bpx[fine_idx[midpoint]] = 0.5 * val // exactly 0.5? - yes if the refinment is correct - this has to get 2 contributions! One from each parent!!!
-    //
-    //
-    //     todo: create hierachical mesh structure - create mesh data_type with only the new nodes and their parents
-    //     get a mapping from coarse to fine index
-    
-}
-
- auto create_bpx(fem::linalg::csr_matrix& stiffness_matrix, const std::string& filename, const int number_coarse_grids) {
-
-    std::vector<double> bpx_preconditioner = fem::linalg::get_diag(stiffness_matrix).values;
-    for (auto val : bpx_preconditioner) {
-        val = 1 / val;
-    }
-
-    for(size_t i = 1; i <= number_coarse_grids; ++i) {
-
-        // load mesh
-        fem::mesh::triangular_2d::Mesh coarse_mesh = fem::io::read_mesh_2d("../data/meshes/quader" + std::to_string(i) + ".vtk"); // this will be outsourced to a hierachical mesh handler
-
-        // compute matrix
-        fem::linalg::csr_matrix coarse_stiffness_matrix = assemble_system(coarse_mesh).stiffness_matrix; 
-
-        // get diagonal and invert it 
-        std::vector<double> coarse_vector = fem::linalg::get_diag(coarse_stiffness_matrix).values;
-        for (auto val : coarse_vector) {
-            val = 1 / val;
+        // midpoint contribution
+        if(k + 1 < hm.levels.size()) { // if we have midpoints --  is this correct?
+            for (auto& mid: hm.midpoints[level]) {
+                bpx[mid.fine_index] += 0.5 * (ld.inv_diag[mid.coarse_parent_1] + ld.inv_diag[mid.coarse_parent_2]);
+            } 
         }
 
-        // project into fine space 
-        std::vector<double> coarse_contribution = prolongation(coarse_vector, i);
-
-        // add to total vector
-        fem::linalg::vector::vector_sum(1, bpx_preconditioner, 1, coarse_contribution, bpx_preconditioner); 
     } 
 
     // now create a function that returns componentwise multiplication with this vector
-    return [bpx_preconditioner](const std::vector& r) {
-        assert (bpx_preconditioner.size() == r.size());
-        for (size_t i = 0; i < bpx_preconditioner.size(); ++i) {
-        r[i] = bpx_preconditioner[i] * r[i];  
+    return [bpx](std::vector<double>& r) {
+        assert (bpx.size() == r.size());
+        for (size_t i = 0; i < bpx.size(); ++i) {
+            r[i] = bpx[i] * r[i];  
         }
     } 
 }
 
 int main(){ 
 
-  fem::mesh::triangular_2d::Mesh mesh = fem::io::read_mesh_2d("../data/meshes/quader5.vtk"); // assumes you run the code from /build
-  std::cout << "Number of nodes in the mesh: " << mesh.nodes.size() << "\n";
-  std::cout << "Number of elements in the mesh " << mesh.elements.size() << "\n";
+  // fem::mesh::triangular_2d::Mesh mesh = fem::io::read_mesh_2d("../data/meshes/quader5.vtk"); // assumes you run the code from /build
+  // std::cout << "Number of nodes in the mesh: " << mesh.nodes.size() << "\n";
+  // std::cout << "Number of elements in the mesh " << mesh.elements.size() << "\n";
 
   lin_system linear_system = assemble_system(mesh);
   std::vector<double> rhs = linear_system.rhs;
-  fem::linalg::csr_matrix stiffness_matrix = linear_system.stiffness_matrix;
+  csr_matrix stiffness_matrix = linear_system.stiffness_matrix;
 
-
-  auto bpx_preconditioner = create_bpx(stiffness_matrix, "../data/meshes/quader1.vtk",4);
+  auto bpx_preconditioner = create_bpx(stiffness_matrix, "../data/meshes/quader1.vtk", 4);
 
   size_t max_iterations = 10000;
   double reduction_factor = 10e-10;
 
-  std::cout << "Number of entries in stiffness matrix " << stiffness_matrix.values.size() << "\n" 
-            << "Number of entries in row_index: " << stiffness_matrix.row_index.size() << "\n" 
-            << "Number of entries in col_index " << stiffness_matrix.col_index.size() << "\n"
-            << "Size of rhs: " << rhs.size() << "\n";
+  // std::cout << "Number of entries in stiffness matrix " << stiffness_matrix.values.size() << "\n" 
+  //           << "Number of entries in row_index: " << stiffness_matrix.row_index.size() << "\n" 
+  //           << "Number of entries in col_index " << stiffness_matrix.col_index.size() << "\n"
+  //           << "Size of rhs: " << rhs.size() << "\n";
 
-  // fem::linalg::print_csr_matrix(stiffness_matrix);
-  
-  std::cout << "Is the stiffness_matrix symmetric? " << fem::linalg::is_symmetric(stiffness_matrix) << "\n";
-  
-  //initial guess:
+  // initial guess:
   std::vector<double> x_0(0.,rhs.size());
 
   fem::linalg::cg::solution solution = fem::linalg::cg::PCG(stiffness_matrix, rhs, x_0, bpx_preconditioner, max_iterations, reduction_factor);
