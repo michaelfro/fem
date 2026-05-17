@@ -17,7 +17,7 @@ using fem::problems::poisson::assemble_system;
 using fem::problems::poisson::lin_system;
 using fem::mesh::hierarchical::HierarchicalMesh;
 using fem::mesh::hierarchical::LevelData;
-using fem::linalg::csrmatrix;
+using fem::linalg::csr_matrix;
 
 HierarchicalMesh build_hierarchical_mesh(const std::vector<std::string>& vtk_files) { 
 
@@ -57,12 +57,12 @@ HierarchicalMesh build_hierarchical_mesh(const std::vector<std::string>& vtk_fil
         ld.fine_to_coarse.assign(n_fine, -1);
 
         // Compute inverse diagonal of coarse stiffness matrix
-        const auto coarse_matrix = assemble_system(coarse_mesh).stiffness_matrix; 
-        auto diag = fem::linalg::get_diag(coarse_matrix);
-        for (auto ele in diag) {
+        const auto coarse_matrix = assemble_system(mesh_k).stiffness_matrix; 
+        auto diag = fem::linalg::get_diag(coarse_matrix).values;
+        for (auto ele : diag) {
             ele = 1 / ele;
         }
-        ld.inv_diag = diag;
+        ld.inv_diag = std::move(diag);
 
         
         // Map coarse nodes to fine nodes 
@@ -93,7 +93,7 @@ HierarchicalMesh build_hierarchical_mesh(const std::vector<std::string>& vtk_fil
                 }
             }
             
-            // Check which next-level nodes are midpoints
+            // Check which new nodes are midpoints
             for (int i = 0; i < mesh_next.nodes.size(); ++i) {
                 auto [x, y] = mesh_next.nodes[i];
                 auto key = make_key(x, y);
@@ -105,7 +105,7 @@ HierarchicalMesh build_hierarchical_mesh(const std::vector<std::string>& vtk_fil
             }
         }
         
-        hm.levels.push_back(std::move(ld)); // some nice optimization
+        hm.levels.push_back(std::move(ld)); // some nice optimization ai gave me
     }
     
     return hm;
@@ -121,59 +121,61 @@ HierarchicalMesh build_hierarchical_mesh(const std::vector<std::string>& vtk_fil
 
         // Coarse contribution
         for (size_t i = 0; i < ld.n_nodes; ++i) {
-            bpx[ld.coarses_to_fine[i]] += ld.inv_diag[i];
+            bpx[ld.coarse_to_fine[i]] += ld.inv_diag[i];
         }
 
-        // midpoint contribution
-        if(k + 1 < hm.levels.size()) { // if we have midpoints --  is this correct?
+        // Midpoint contribution in the next level 
+        if(level + 1 < hm.levels.size()) { // if we have midpoints - finest level has no children 
             for (auto& mid: hm.midpoints[level]) {
                 bpx[mid.fine_index] += 0.5 * (ld.inv_diag[mid.coarse_parent_1] + ld.inv_diag[mid.coarse_parent_2]);
             } 
         }
-
     } 
 
-    // now create a function that returns componentwise multiplication with this vector
-    return [bpx](std::vector<double>& r) {
+    // return a function that returns componentwise multiplication with this vector
+    return [bpx](const std::vector<double>& r) -> std::vector<double> {
         assert (bpx.size() == r.size());
+        std::vector<double> result(r.size());
         for (size_t i = 0; i < bpx.size(); ++i) {
-            r[i] = bpx[i] * r[i];  
+            result[i] = bpx[i] * r[i];  
         }
-    } 
+        return result;
+    };
 }
 
 int main(){ 
 
-  // fem::mesh::triangular_2d::Mesh mesh = fem::io::read_mesh_2d("../data/meshes/quader5.vtk"); // assumes you run the code from /build
-  // std::cout << "Number of nodes in the mesh: " << mesh.nodes.size() << "\n";
-  // std::cout << "Number of elements in the mesh " << mesh.elements.size() << "\n";
+  std::cout << "Assembling hierachical mesh structure \n";
+  std::vector<std::string> meshfiles; 
+  const int number_meshes = 5;
+  for (int i = 1; i <= number_meshes; ++i) {
+      meshfiles.push_back("../data/meshes/quader" + std::to_string(i) + ".vtk");
+  }
+  HierarchicalMesh hm = build_hierarchical_mesh(meshfiles);
 
-  lin_system linear_system = assemble_system(mesh);
+  std::cout << "Assembling linear system \n";
+  lin_system linear_system = assemble_system(hm.fine_mesh);
   std::vector<double> rhs = linear_system.rhs;
   csr_matrix stiffness_matrix = linear_system.stiffness_matrix;
 
-  auto bpx_preconditioner = create_bpx(stiffness_matrix, "../data/meshes/quader1.vtk", 4);
+  std::cout << "Creating bpx_preconditioner \n";
+  auto bpx_preconditioner = create_bpx(hm);
 
   size_t max_iterations = 10000;
   double reduction_factor = 10e-10;
-
-  // std::cout << "Number of entries in stiffness matrix " << stiffness_matrix.values.size() << "\n" 
-  //           << "Number of entries in row_index: " << stiffness_matrix.row_index.size() << "\n" 
-  //           << "Number of entries in col_index " << stiffness_matrix.col_index.size() << "\n"
-  //           << "Size of rhs: " << rhs.size() << "\n";
-
-  // initial guess:
   std::vector<double> x_0(0.,rhs.size());
 
-  fem::linalg::cg::solution solution = fem::linalg::cg::PCG(stiffness_matrix, rhs, x_0, bpx_preconditioner, max_iterations, reduction_factor);
-  std::cout << "PCG finished in " << solution.iterations << " iterations with a final residuum of " << solution.final_residuum << "\n";
+  std::cout << "Solving with PCG \n";
+  fem::linalg::cg::solution solution_bpx = fem::linalg::cg::PCG(stiffness_matrix, rhs, x_0, bpx_preconditioner, max_iterations, reduction_factor);
+  std::cout << "PCG finished in " << solution_bpx.iterations << " iterations with a final residuum of " << solution_bpx.final_residuum << "\n";
 
+  std::cout << "Solving without BPX with CG \n";
   fem::linalg::cg::solution solution = fem::linalg::cg::CG(stiffness_matrix, rhs, max_iterations, reduction_factor);
   std::cout << "Normal CG finished in " << solution.iterations << " iterations with a final residuum of " << solution.final_residuum << "\n";
 
-  std::cout << "Error in nodal l2 norm: " << nodal_l2_error(mesh, solution.solution) << "\n"; 
+  std::cout << "Error in nodal l2 norm: " << fem::problems::poisson::nodal_l2_error(hm.fine_mesh, solution_bpx.solution) << "\n"; 
 
-  fem::io::write_solution_csv_2d(solution, mesh,"poisson_bpx.csv");
+  fem::io::write_solution_csv_2d(solution_bpx, hm.fine_mesh,"poisson_bpx.csv");
 
   return 0;
 }

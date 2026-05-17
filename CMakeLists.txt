@@ -13,6 +13,7 @@ add_compile_options(
 
 file(GLOB_RECURSE FEM_SOURCES
     src/*.cpp
+    problems/*.cpp
 )
 
 add_library(fem ${FEM_SOURCES})

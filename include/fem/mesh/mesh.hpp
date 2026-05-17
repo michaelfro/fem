@@ -16,7 +16,7 @@ namespace fem::mesh::hierarchical {
 // Data for the k_th level mapping back to the finest grid
 struct LevelData {
     int level;
-    int n_nodes; // needed?
+    int n_nodes; // needed? - used once 
     std::vector<int> coarse_to_fine; // maps coarse node index to fine node index
     std::vector<int> fine_to_coarse; // maps fine node index to coarse node index (-1 if not a coarse node)     
     std::vector<double> inv_diag; // inverted diagonal of the stiffness matrix at this level
