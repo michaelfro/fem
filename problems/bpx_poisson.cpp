@@ -6,6 +6,7 @@
 #include <fem/linalg/Vector.hpp>
 #include <fem/linalg/CSRMatrix.hpp>
 #include <fem/linalg/cg.hpp>
+#include <fem/problems/poisson.hpp>
 #include <cmath>
 #include <array>
 #include <algorithm>
@@ -264,7 +265,24 @@ double nodal_l2_error(const fem::mesh::triangular_2d::Mesh mesh, const std::vect
 // }
 
 std::vector<double> prolongation(std::vector<double>& coarse_vector, size_t level) {
-    // what to do here?
+
+    // It is piecewise linear on the grid of the l-th level, that means I skip over some nodes where I now need to add a reduced contribution
+    // I need to somehow know which nodes belong to which grid - abuse the ordering? 
+    // create a prolongation from one level to the next and iterate over it? 
+    // Easiest since I skip an exact number of nodes namely I skip exactly one node per vertex - here the value has to be 0.5 * value 
+
+    // from coarsest mesh to finest:
+    // for each node in current mesh: 
+    //     val = 1 / diag(node); I have a vector of all these values -> coares_vector
+    //     bpx[fine_idx[node.x,node.y]] = val 
+    //     midpoints = new all new nodes that where not in the prev ones
+    //     for all midpoints
+    //     bpx[fine_idx[midpoint]] = 0.5 * val // exactly 0.5? - yes if the refinment is correct - this has to get 2 contributions! One from each parent!!!
+    //
+    //
+    //     todo: create hierachical mesh structure - create mesh data_type with only the new nodes and their parents
+    //     get a mapping from coarse to fine index
+    
 }
 
  auto create_bpx(fem::linalg::csr_matrix& stiffness_matrix, const std::string& filename, const int number_coarse_grids) {
@@ -277,7 +295,7 @@ std::vector<double> prolongation(std::vector<double>& coarse_vector, size_t leve
     for(size_t i = 1; i <= number_coarse_grids; ++i) {
 
         // load mesh
-        fem::mesh::triangular_2d::Mesh coarse_mesh = fem::io::read_mesh_2d("../data/meshes/quader" + std::to_string(i) + ".vtk");
+        fem::mesh::triangular_2d::Mesh coarse_mesh = fem::io::read_mesh_2d("../data/meshes/quader" + std::to_string(i) + ".vtk"); // this will be outsourced to a hierachical mesh handler
 
         // compute matrix
         fem::linalg::csr_matrix coarse_stiffness_matrix = assemble_system(coarse_mesh).stiffness_matrix; 

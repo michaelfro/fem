@@ -12,4 +12,5 @@ BPX preconditioner:
   How to assemble the preconditioner?
   Run PCG with the assembled preconditioner as well as the assembled matrix
   Move BPX assembly somewhere else? - then I need the fem matrix assembly code there as well probably. 
+  make a poisson.hpp - then load functions from there
   I might need matrix assembly separate from the rhs assembly
