@@ -93,8 +93,9 @@ namespace fem::linalg::cg{
     /**
      * Solves the linear system Ax = b with the preconditioned CG method.
      */
+    template<typename Preconditioner>
     solution PCG(const csr_matrix &matrix, const std::vector<double> &rhs,
-                 const std::vector<double> &x_0, const csr_matrix &preconditioner, 
+                 const std::vector<double> &x_0, Preconditioner & apply_preconditioner, 
                      const size_t max_iterations, const double reduction_factor) {
 
         std::vector<double> p;
@@ -106,7 +107,7 @@ namespace fem::linalg::cg{
 
         matrix_vector_product(matrix,x_0,Ax);
         fem::linalg::vector::vector_sum(1.,rhs,-1.,Ax,r);
-        matrix_vector_product(preconditioner,r,z);
+        apply_preconditioner(r,z);
         p = z;
 
         double error_norm = fem::linalg::vector::l2_norm(r);
@@ -133,7 +134,7 @@ namespace fem::linalg::cg{
 
             fem::linalg::vector::vector_sum(1,x,alpha,p,x); 
             fem::linalg::vector::vector_sum(1.,r,-1. * alpha,Ap,r);
-            matrix_vector_product(preconditioner,r,z);
+            apply_preconditioner(r,z);
             rTz_new = inner_product(r,z);
             error_norm = std::sqrt(rTz_new);
             if (error_norm < reduction_factor){ // covergence check:
@@ -183,46 +184,46 @@ namespace fem::linalg::cg{
 
     }
 
-
-    void test_pcg() {
-        int n = 100;
-        csr_matrix A = fem::linalg::make_poisson_1d(n);
-        // print(A);
-        std::vector<double> x_true(n, 1.0);
-
-        // Define the right-hand side vector b
-        std::vector<double> b(n, 1.0);
-        matrix_vector_product(A,x_true,b);
-
-        // Define the preconditioner M^-1 in CSR format:
-        csr_matrix M;
-
-        M.row_index.resize(n+1);
-        M.col_index.resize(n);
-        M.values.resize(n);
-
-        for (int i = 0; i < n; ++i) {
-            M.row_index[i] = i;
-            M.col_index[i] = i;
-            M.values[i] = 0.5; // Jacobi preconditioner, Diagonal is 2, so 1/2
-            // M.values[i] = 1.; // identity preconditioner
-        }
-
-        M.row_index[n] = n;
-
-        std::vector<double> x_0(n, 0.0);
-
-        // Call the PCG solver
-        solution sol = PCG(A, b, x_0, M, 100, 10e-12);
-
-        // Output the solution
-        std::cout << "Solution vector x:" << std::endl;
-        fem::linalg::vector::print(sol.solution);
-
-        // Output the number of iterations and final residual
-        std::cout << "PCG iterations: " << sol.iterations << std::endl;
-        std::cout << "Final residual: " << sol.final_residuum << std::endl;
-
-    }
+    // todo redo with new logic!!
+    // void test_pcg() { 
+    //     int n = 100;
+    //     csr_matrix A = fem::linalg::make_poisson_1d(n);
+    //     // print(A);
+    //     std::vector<double> x_true(n, 1.0);
+    //
+    //     // Define the right-hand side vector b
+    //     std::vector<double> b(n, 1.0);
+    //     matrix_vector_product(A,x_true,b);
+    //
+    //     // Define the preconditioner M^-1 in CSR format:
+    //     csr_matrix M;
+    //
+    //     M.row_index.resize(n+1);
+    //     M.col_index.resize(n);
+    //     M.values.resize(n);
+    //
+    //     for (int i = 0; i < n; ++i) {
+    //         M.row_index[i] = i;
+    //         M.col_index[i] = i;
+    //         M.values[i] = 0.5; // Jacobi preconditioner, Diagonal is 2, so 1/2
+    //         // M.values[i] = 1.; // identity preconditioner
+    //     }
+    //
+    //     M.row_index[n] = n;
+    //
+    //     std::vector<double> x_0(n, 0.0);
+    //
+    //     // Call the PCG solver
+    //     solution sol = PCG(A, b, x_0, M, 100, 10e-12);
+    //
+    //     // Output the solution
+    //     std::cout << "Solution vector x:" << std::endl;
+    //     fem::linalg::vector::print(sol.solution);
+    //
+    //     // Output the number of iterations and final residual
+    //     std::cout << "PCG iterations: " << sol.iterations << std::endl;
+    //     std::cout << "Final residual: " << sol.final_residuum << std::endl;
+    //
+    // }
 
 }

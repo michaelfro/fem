@@ -259,15 +259,22 @@ double nodal_l2_error(const fem::mesh::triangular_2d::Mesh mesh, const std::vect
     return std::pow((sum * domain_volume)/ mesh.nodes.size(), 1./2.);
 }
 
-std::vector<double> project_to_finest_grid(std::vector<double>& coarse_vector) {
-    
+// std::vector<double> restriction(std::vector<double>& fine_vector) {
+//
+// }
+
+std::vector<double> prolongation(std::vector<double>& coarse_vector, size_t level) {
+    // what to do here?
 }
 
-fem::linalg::csr_matrix create_bpx(fem::linalg::csr_matrix& stiffness_matrix, const std::string& filename, const int number_coarse_grids) {
+ auto create_bpx(fem::linalg::csr_matrix& stiffness_matrix, const std::string& filename, const int number_coarse_grids) {
 
-    fem::linalg::csr_matrix bpx_preconditioner = fem::linalg::get_diag(stiffness_matrix);
+    std::vector<double> bpx_preconditioner = fem::linalg::get_diag(stiffness_matrix).values;
+    for (auto val : bpx_preconditioner) {
+        val = 1 / val;
+    }
 
-    for(size_t i = 0; i < number_coarse_grids; ++i) {
+    for(size_t i = 1; i <= number_coarse_grids; ++i) {
 
         // load mesh
         fem::mesh::triangular_2d::Mesh coarse_mesh = fem::io::read_mesh_2d("../data/meshes/quader" + std::to_string(i) + ".vtk");
@@ -282,18 +289,20 @@ fem::linalg::csr_matrix create_bpx(fem::linalg::csr_matrix& stiffness_matrix, co
         }
 
         // project into fine space 
-        std::vector<double> coarse_contribution = project_to_finest_grid(coarse_vector);
+        std::vector<double> coarse_contribution = prolongation(coarse_vector, i);
 
         // add to total vector
-        fem::linalg::vector::vector_sum(1, bpx_preconditioner.values, 1, coarse_contribution, bpx_preconditioner.values); 
+        fem::linalg::vector::vector_sum(1, bpx_preconditioner, 1, coarse_contribution, bpx_preconditioner); 
+    } 
+
+    // now create a function that returns componentwise multiplication with this vector
+    return [bpx_preconditioner](const std::vector& r) {
+        assert (bpx_preconditioner.size() == r.size());
+        for (size_t i = 0; i < bpx_preconditioner.size(); ++i) {
+        r[i] = bpx_preconditioner[i] * r[i];  
+        }
     } 
 }
-
-// give this function to PCG!
-void apply_bpx(std::vector<double>& r, std::vector<double& res) {
-    
-}
-
 
 int main(){ 
 
@@ -306,7 +315,7 @@ int main(){
   fem::linalg::csr_matrix stiffness_matrix = linear_system.stiffness_matrix;
 
 
-  fem::linalg::csr_matrix bpx_preconditioner = create_bpx(stiffness_matrix, "../data/meshes/quader1.vtk",4);
+  auto bpx_preconditioner = create_bpx(stiffness_matrix, "../data/meshes/quader1.vtk",4);
 
   size_t max_iterations = 10000;
   double reduction_factor = 10e-10;
