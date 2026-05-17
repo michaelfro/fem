@@ -91,7 +91,7 @@ namespace fem::linalg::cg{
 
 
     /**
-     * Solves the linear system Ax = b with the CG method.
+     * Solves the linear system Ax = b with the preconditioned CG method.
      */
     solution PCG(const csr_matrix &matrix, const std::vector<double> &rhs,
                  const std::vector<double> &x_0, const csr_matrix &preconditioner, 

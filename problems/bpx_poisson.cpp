@@ -259,16 +259,54 @@ double nodal_l2_error(const fem::mesh::triangular_2d::Mesh mesh, const std::vect
     return std::pow((sum * domain_volume)/ mesh.nodes.size(), 1./2.);
 }
 
+std::vector<double> project_to_finest_grid(std::vector<double>& coarse_vector) {
+    
+}
+
+fem::linalg::csr_matrix create_bpx(fem::linalg::csr_matrix& stiffness_matrix, const std::string& filename, const int number_coarse_grids) {
+
+    fem::linalg::csr_matrix bpx_preconditioner = fem::linalg::get_diag(stiffness_matrix);
+
+    for(size_t i = 0; i < number_coarse_grids; ++i) {
+
+        // load mesh
+        fem::mesh::triangular_2d::Mesh coarse_mesh = fem::io::read_mesh_2d("../data/meshes/quader" + std::to_string(i) + ".vtk");
+
+        // compute matrix
+        fem::linalg::csr_matrix coarse_stiffness_matrix = assemble_system(coarse_mesh).stiffness_matrix; 
+
+        // get diagonal and invert it 
+        std::vector<double> coarse_vector = fem::linalg::get_diag(coarse_stiffness_matrix).values;
+        for (auto val : coarse_vector) {
+            val = 1 / val;
+        }
+
+        // project into fine space 
+        std::vector<double> coarse_contribution = project_to_finest_grid(coarse_vector);
+
+        // add to total vector
+        fem::linalg::vector::vector_sum(1, bpx_preconditioner.values, 1, coarse_contribution, bpx_preconditioner.values); 
+    } 
+}
+
+// give this function to PCG!
+void apply_bpx(std::vector<double>& r, std::vector<double& res) {
+    
+}
+
 
 int main(){ 
 
-  fem::mesh::triangular_2d::Mesh mesh = fem::io::read_mesh_2d("../data/meshes/square.vtk"); // assumes you run the code from /build
+  fem::mesh::triangular_2d::Mesh mesh = fem::io::read_mesh_2d("../data/meshes/quader5.vtk"); // assumes you run the code from /build
   std::cout << "Number of nodes in the mesh: " << mesh.nodes.size() << "\n";
   std::cout << "Number of elements in the mesh " << mesh.elements.size() << "\n";
 
   lin_system linear_system = assemble_system(mesh);
   std::vector<double> rhs = linear_system.rhs;
   fem::linalg::csr_matrix stiffness_matrix = linear_system.stiffness_matrix;
+
+
+  fem::linalg::csr_matrix bpx_preconditioner = create_bpx(stiffness_matrix, "../data/meshes/quader1.vtk",4);
 
   size_t max_iterations = 10000;
   double reduction_factor = 10e-10;
@@ -282,12 +320,18 @@ int main(){
   
   std::cout << "Is the stiffness_matrix symmetric? " << fem::linalg::is_symmetric(stiffness_matrix) << "\n";
   
+  //initial guess:
+  std::vector<double> x_0(0.,rhs.size());
+
+  fem::linalg::cg::solution solution = fem::linalg::cg::PCG(stiffness_matrix, rhs, x_0, bpx_preconditioner, max_iterations, reduction_factor);
+  std::cout << "PCG finished in " << solution.iterations << " iterations with a final residuum of " << solution.final_residuum << "\n";
+
   fem::linalg::cg::solution solution = fem::linalg::cg::CG(stiffness_matrix, rhs, max_iterations, reduction_factor);
-  std::cout << "Cg finished in " << solution.iterations << " iterations with a final residuum of " << solution.final_residuum << "\n";
+  std::cout << "Normal CG finished in " << solution.iterations << " iterations with a final residuum of " << solution.final_residuum << "\n";
 
   std::cout << "Error in nodal l2 norm: " << nodal_l2_error(mesh, solution.solution) << "\n"; 
 
-  fem::io::write_solution_csv_2d(solution, mesh,"poisson_dirchlet_2d.csv");
+  fem::io::write_solution_csv_2d(solution, mesh,"poisson_bpx.csv");
 
   return 0;
 }
