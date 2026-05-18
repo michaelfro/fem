@@ -18,9 +18,9 @@ import pandas as pd
     # mesh.write('../output/solution_2d_poisson_dirichlet.vtu')
 
 if __name__ == '__main__':
-    mesh = pv.read('../data/meshes/square.vtk')
-    solution = pd.read_csv('../output/poisson_dirchlet_2d.csv')
+    mesh = pv.read('../data/meshes/quader5.vtk')
+    solution = pd.read_csv('../output/poisson_bpx.csv')
     mesh['u'] = solution['u'].values
-    mesh.save('../output/solution_2d_poisson_dirichlet.vtk')
+    mesh.save('../output/solution_bpx.vtk')
 
 
