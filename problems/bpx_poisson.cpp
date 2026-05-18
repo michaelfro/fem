@@ -127,7 +127,7 @@ HierarchicalMesh build_hierarchical_mesh(const std::vector<std::string>& vtk_fil
         // Midpoint contribution in the next level 
         if(level + 1 < hm.levels.size()) { // if we have midpoints - finest level has no children 
             for (auto& mid: hm.midpoints[level]) {
-                bpx[mid.fine_index] += 0.5 * (ld.inv_diag[mid.coarse_parent_1] + ld.inv_diag[mid.coarse_parent_2]);
+                bpx[mid.fine_index] += 0.5 * (ld.inv_diag[mid.coarse_parent_1] + ld.inv_diag[mid.coarse_parent_2]); // parents are at level k, midpoint at k + 1
             } 
         }
     } 
@@ -163,7 +163,7 @@ int main(){
 
   size_t max_iterations = 10000;
   double reduction_factor = 10e-10;
-  std::vector<double> x_0(0.,rhs.size());
+  std::vector<double> x_0(rhs.size(),0.);
 
   std::cout << "Solving with PCG \n";
   fem::linalg::cg::solution solution_bpx = fem::linalg::cg::PCG(stiffness_matrix, rhs, x_0, bpx_preconditioner, max_iterations, reduction_factor);
