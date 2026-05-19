@@ -10,6 +10,8 @@ Makefile
 *.o
 *.obj
 
+.DS_Store
+
 *.exe
 *.out
 

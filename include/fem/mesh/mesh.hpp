@@ -31,9 +31,7 @@ struct MidpointNode { // newly introduced node
 struct HierarchicalMesh {
     fem::mesh::triangular_2d::Mesh fine_mesh;
     std::vector<LevelData> levels; // One LevelData per level, including finest
-    
-    // midpoints[k] = nodes introduced when going from level k to k+1
-    std::vector<std::vector<MidpointNode>> midpoints;
+    std::vector<std::vector<MidpointNode>> midpoints; // midpoints[k] = nodes introduced when going from level k to k+1
 };
 
 }
