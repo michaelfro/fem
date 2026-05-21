@@ -18,9 +18,14 @@ import pandas as pd
     # mesh.write('../output/solution_2d_poisson_dirichlet.vtu')
 
 if __name__ == '__main__':
+    print('Reading in Mesh')
     mesh = pv.read('../data/meshes/quader5.vtk')
+    print('Reading in solution')
     solution = pd.read_csv('../output/poisson_bpx.csv')
     mesh['u'] = solution['u'].values
-    mesh.save('../output/solution_bpx.vtk')
+    print('Saving mesh')
+    output_file = '../output/solution_bpx.vtk'
+    mesh.save(output_file)
+    print(f'VTK file at {output_file}')
 
 

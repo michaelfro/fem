@@ -115,7 +115,7 @@ HierarchicalMesh build_hierarchical_mesh(const std::vector<std::string>& vtk_fil
 
     std::vector<double> bpx(hm.fine_mesh.nodes.size(), 0.0);
 
-    for(size_t level = 0; level < hm.levels.size(); ++level) {
+    for (size_t level = 0; level < hm.levels.size(); ++level) {
         
         auto& ld = hm.levels[level]; // LevelData
 
@@ -124,15 +124,15 @@ HierarchicalMesh build_hierarchical_mesh(const std::vector<std::string>& vtk_fil
             bpx[ld.coarse_to_fine[i]] += ld.inv_diag[i];
         }
 
-        // Midpoint contribution in the next level 
-        if(level + 1 < hm.levels.size()) { // if we have midpoints - finest level has no children 
+        // Midpoint contribution in the next level - todo fix this
+        if (level + 1 < hm.levels.size()) { // if we have midpoints - finest level has no children 
             for (auto& mid: hm.midpoints[level]) {
                 bpx[mid.fine_index] += 0.5 * (ld.inv_diag[mid.coarse_parent_1] + ld.inv_diag[mid.coarse_parent_2]); // parents are at level k, midpoint at k + 1
             } 
         }
     } 
 
-    // return a function that returns componentwise multiplication with this vector
+    // return a function that returns componentwise multiplication with this vector - Max uses the restriction transposed to prolongate
     return [bpx](const std::vector<double>& r) -> std::vector<double> {
         assert (bpx.size() == r.size());
         std::vector<double> result(r.size());
