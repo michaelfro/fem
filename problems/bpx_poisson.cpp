@@ -78,8 +78,9 @@ HierarchicalMesh build_hierarchical_mesh(const std::vector<std::string>& vtk_fil
         if (k + 1 < meshes.size()) {
             auto& mesh_next = meshes[k+1];
 
-            // Build edge->parents lookup keyed on coarse node index pairs, no floating point
+            // Build edge to parents lookup
             std::map<std::pair<int,int>, std::pair<int,int>> edge_to_parents;
+
             for (auto& tri : mesh_k.elements) {
                 std::array<std::pair<int,int>,3> edges = {
                     std::make_pair(tri[0], tri[1]),
@@ -95,13 +96,16 @@ HierarchicalMesh build_hierarchical_mesh(const std::vector<std::string>& vtk_fil
             // For each new node at level k+1, find its two coarse parents by checking
             // all edges — the midpoint lies between the two coarse nodes whose
             // fine indices bracket it
-            for (int i = 0; i < (int)mesh_next.nodes.size(); ++i) {
-                auto [x, y] = mesh_next.nodes[i];
-                int fi = fine_lookup.at(make_key(x, y));
 
-                if (ld.fine_to_coarse[fi] == -1) {
+            for (int i = 0; i < (int)mesh_next.nodes.size(); ++i) { // for all nodes in the next finer mesh
+                auto [x, y] = mesh_next.nodes[i];
+                int fi = fine_lookup.at(make_key(x, y)); //find fine_index for that node
+
+                if (ld.fine_to_coarse[fi] == -1) { // if that node is not in the coarse mesh
+
                     // Find the edge whose midpoint this is by checking all coarse edges
                     bool found = false;
+
                     for (auto& [edge_key, parents] : edge_to_parents) {
                         auto [a, b] = parents;
                         int fi_a = ld.coarse_to_fine[a];
@@ -155,7 +159,7 @@ HierarchicalMesh build_hierarchical_mesh(const std::vector<std::string>& vtk_fil
         if (level + 1 < hm.levels.size()) { // if we have midpoints - finest level has no children 
             for (auto& mid: hm.midpoints[level]) {
                 // bpx[mid.fine_index] += 0.5 * (ld.inv_diag[mid.coarse_parent_1] + ld.inv_diag[mid.coarse_parent_2]); // parents are at level k, midpoint at k + 1
-                bpx[mid.fine_index] += 0.5 * (ld.coarse_to_fine[mid.coarse_parent_1] + ld.coarse_to_fine[mid.coarse_parent_2]); // parents are at level k, midpoint at k + 1                                                                                                                            
+                bpx[mid.fine_index] += 0.5 * (bpx[ld.coarse_to_fine[mid.coarse_parent_1]] + bpx[ld.coarse_to_fine[mid.coarse_parent_2]}); // parents are at level k, midpoint at k + 1                                                                                                                            
             } 
         }
     } 
