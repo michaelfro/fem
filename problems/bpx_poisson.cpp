@@ -59,7 +59,7 @@ HierarchicalMesh build_hierarchical_mesh(const std::vector<std::string>& vtk_fil
         // Compute inverse diagonal of coarse stiffness matrix
         const auto coarse_matrix = assemble_system(mesh_k).stiffness_matrix; 
         auto diag = fem::linalg::get_diag(coarse_matrix).values;
-        for (auto ele : diag) {
+        for (auto& ele : diag) {
             ele = 1 / ele;
         }
         ld.inv_diag = std::move(diag);
@@ -77,9 +77,9 @@ HierarchicalMesh build_hierarchical_mesh(const std::vector<std::string>& vtk_fil
         // Find midpoints introduced at this level transition
         if (k + 1 < meshes.size()) {
             auto& mesh_next = meshes[k+1];
-            
-            // Build edge midpoint lookup from level k
-            std::map<std::pair<long,long>, std::pair<int,int>> midpoint_lookup;
+
+            // Build edge->parents lookup keyed on coarse node index pairs, no floating point
+            std::map<std::pair<int,int>, std::pair<int,int>> edge_to_parents;
             for (auto& tri : mesh_k.elements) {
                 std::array<std::pair<int,int>,3> edges = {
                     std::make_pair(tri[0], tri[1]),
@@ -87,25 +87,52 @@ HierarchicalMesh build_hierarchical_mesh(const std::vector<std::string>& vtk_fil
                     std::make_pair(tri[0], tri[2])
                 };
                 for (auto [a, b] : edges) {
-                    double mx = (mesh_k.nodes[a][0] + mesh_k.nodes[b][0]) / 2.0;
-                    double my = (mesh_k.nodes[a][1] + mesh_k.nodes[b][1]) / 2.0;
-                    midpoint_lookup[make_key(mx, my)] = {a, b};
+                    auto key = std::make_pair(std::min(a,b), std::max(a,b));
+                    edge_to_parents[key] = {a, b};
                 }
+            }
+
+            // For each new node at level k+1, find its two coarse parents by checking
+            // all edges — the midpoint lies between the two coarse nodes whose
+            // fine indices bracket it
+            for (int i = 0; i < (int)mesh_next.nodes.size(); ++i) {
+                auto [x, y] = mesh_next.nodes[i];
+                int fi = fine_lookup.at(make_key(x, y));
+
+                if (ld.fine_to_coarse[fi] == -1) {
+                    // Find the edge whose midpoint this is by checking all coarse edges
+                    bool found = false;
+                    for (auto& [edge_key, parents] : edge_to_parents) {
+                        auto [a, b] = parents;
+                        int fi_a = ld.coarse_to_fine[a];
+                        int fi_b = ld.coarse_to_fine[b];
+                        double mx = (hm.fine_mesh.nodes[fi_a][0] + hm.fine_mesh.nodes[fi_b][0]) / 2.0;
+                        double my = (hm.fine_mesh.nodes[fi_a][1] + hm.fine_mesh.nodes[fi_b][1]) / 2.0;
+                        if (make_key(mx, my) == make_key(x, y)) {
+                            hm.midpoints[k].push_back({fi, a, b});
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (!found)
+                        throw std::runtime_error("Could not find parents for new node at level " 
+                            + std::to_string(k+1));
+                }
+            }
+
+            // assert(ld.n_nodes + hm.midpoints[k].size() == mesh_next.nodes.size());
+        
+            if (hm.midpoints[k].size() + n_coarse < mesh_next.nodes.size()) {
+                std::cout << "Problem with midpoint size.\n" << "We have " << hm.midpoints[k].size() 
+                            << " midpoints and " << n_coarse << " coarse nodes but the next level has " 
+                            << meshes[k+1].nodes.size() << " nodes.\n";
+
             }
             
-            // Check which new nodes are midpoints
-            for (int i = 0; i < mesh_next.nodes.size(); ++i) {
-                auto [x, y] = mesh_next.nodes[i];
-                auto key = make_key(x, y);
-                if (midpoint_lookup.count(key)) {
-                    auto [p, q] = midpoint_lookup[key];
-                    int fi = fine_lookup.at(key);
-                    hm.midpoints[k].push_back({fi, p, q});
-                }
-            }
+
         }
         
-        hm.levels.push_back(std::move(ld)); // some nice optimization ai gave me
+        hm.levels.push_back(std::move(ld)); 
     }
     
     return hm;
@@ -127,10 +154,18 @@ HierarchicalMesh build_hierarchical_mesh(const std::vector<std::string>& vtk_fil
         // Midpoint contribution in the next level - todo fix this
         if (level + 1 < hm.levels.size()) { // if we have midpoints - finest level has no children 
             for (auto& mid: hm.midpoints[level]) {
-                bpx[mid.fine_index] += 0.5 * (ld.inv_diag[mid.coarse_parent_1] + ld.inv_diag[mid.coarse_parent_2]); // parents are at level k, midpoint at k + 1
+                // bpx[mid.fine_index] += 0.5 * (ld.inv_diag[mid.coarse_parent_1] + ld.inv_diag[mid.coarse_parent_2]); // parents are at level k, midpoint at k + 1
+                bpx[mid.fine_index] += 0.5 * (ld.coarse_to_fine[mid.coarse_parent_1] + ld.coarse_to_fine[mid.coarse_parent_2]); // parents are at level k, midpoint at k + 1                                                                                                                            
             } 
         }
     } 
+
+    // debug check if all bpx values are positive - spd precond
+    for (auto val : bpx) {
+        if (val < 0) {
+            std::cout << "Oh no, bad values in bpx\n";
+        }
+    }
 
     // return a function that returns componentwise multiplication with this vector - Max uses the restriction transposed to prolongate
     return [bpx](const std::vector<double>& r) -> std::vector<double> {
