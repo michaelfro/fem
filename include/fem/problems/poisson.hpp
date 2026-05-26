@@ -83,8 +83,9 @@ double f(const double x, const double y);
  * @brief Imposes homogeneous Dirichlet boundary conditions on the square boundary.
  *
  * Boundary nodes are detected on `x = +/-1` and `y = +/-1`. The corresponding
- * matrix rows are replaced by identity rows and the right-hand side entries are
- * set to zero.
+ * rows and columns are eliminated symmetrically, and boundary rows are replaced
+ * by identity rows. This keeps the global node numbering intact while
+ * preserving matrix symmetry.
  *
  * @param rhs Right-hand side vector to modify in place.
  * @param stiffness_matrix Stiffness matrix to modify in place.

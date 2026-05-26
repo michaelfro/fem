@@ -10,39 +10,62 @@
 #include <fem/mesh/mesh.hpp>
 #include <fem/problems/poisson.hpp>
 #include <iostream>
+#include <stdexcept>
 #include <vector>
 
 namespace fem::problems::poisson {
+namespace {
+
+bool is_boundary_node(const std::array<double, 2> &node) {
+    constexpr double eps = 1e-12;
+    return std::abs(node[0] - 1.0) <= eps || std::abs(node[0] + 1.0) <= eps ||
+           std::abs(node[1] - 1.0) <= eps || std::abs(node[1] + 1.0) <= eps;
+}
+
+} // namespace
 
 double f(const double x, const double y) { return x * x + y * y - 2; }
 
-void impose_boundary_conditions(
-    std::vector<double> &rhs, fem::linalg::csr_matrix &stiffness_matrix,
-    const fem::mesh::triangular_2d::Mesh mesh) { // homogenous dirichlet boundary conditions
+void impose_boundary_conditions(std::vector<double> &rhs, fem::linalg::csr_matrix &stiffness_matrix,
+                                const fem::mesh::triangular_2d::Mesh mesh) {
 
-    // it would be better to get rid of the dirichlet indices for performance..
+    assert(rhs.size() == mesh.nodes.size());
+    assert(stiffness_matrix.row_index.size() == rhs.size() + 1);
 
-    for (size_t i = 0; i < rhs.size(); ++i) {
-        double eps = 1e-12;
-        if (std::abs(mesh.nodes[i][0] - 1) <= eps || std::abs(mesh.nodes[i][0] + 1) <= eps ||
-            std::abs(mesh.nodes[i][1] - 1) <= eps || std::abs(mesh.nodes[i][1] + 1) <= eps) {
-            rhs[i] = 0.;
+    std::vector<char> is_dirichlet(mesh.nodes.size(), false);
+    for (size_t i = 0; i < mesh.nodes.size(); ++i) {
+        is_dirichlet[i] = is_boundary_node(mesh.nodes[i]);
+    }
 
-            // Change column entries to preserve symmetry, very expensive
-            // for (size_t idx = 0; idx < stiffness_matrix.values.size(); ++ idx) {
-            //     if (stiffness_matrix.col_index[k] == i) {
-            //         stiffness_matrix.values[k] = 0.;
-            //     }
-            // }
+    for (size_t boundary_node = 0; boundary_node < is_dirichlet.size(); ++boundary_node) {
+        if (!is_dirichlet[boundary_node]) {
+            continue;
+        }
 
-            // for a boundary node change rhs and row in the stiffness_matrix - this breaks symmetry
-            for (size_t k = stiffness_matrix.row_index[i]; k < stiffness_matrix.row_index[i + 1];
-                 ++k) {
-                stiffness_matrix.values[k] = (stiffness_matrix.col_index[k] == i) ? 1. : 0.;
+        constexpr double boundary_value = 0.0;
+        bool diagonal_found = false;
+
+        for (size_t row = 0; row < rhs.size(); ++row) {
+            for (size_t entry = stiffness_matrix.row_index[row];
+                 entry < stiffness_matrix.row_index[row + 1]; ++entry) {
+                const size_t col = stiffness_matrix.col_index[entry];
+
+                if (row == boundary_node) {
+                    stiffness_matrix.values[entry] = (col == boundary_node) ? 1.0 : 0.0;
+                    diagonal_found = diagonal_found || (col == boundary_node);
+                } else if (col == boundary_node) {
+                    rhs[row] -= stiffness_matrix.values[entry] * boundary_value;
+                    stiffness_matrix.values[entry] = 0.0;
+                }
             }
         }
+
+        if (!diagonal_found) {
+            throw std::runtime_error("Dirichlet boundary row does not contain a diagonal entry");
+        }
+
+        rhs[boundary_node] = boundary_value;
     }
-    return;
 }
 
 local_result local_contribution(const fem::mesh::triangular_2d::Mesh mesh) {
