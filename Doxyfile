@@ -1,0 +1,30 @@
+# Doxygen configuration for the FEM library.
+
+PROJECT_NAME           = "2D FEM"
+PROJECT_BRIEF          = "Finite element experiments with triangular meshes and sparse solvers"
+OUTPUT_DIRECTORY       = docs
+
+INPUT                  = include src problems
+RECURSIVE              = YES
+FILE_PATTERNS          = *.hpp *.cpp
+
+EXTRACT_ALL            = NO
+EXTRACT_PRIVATE        = NO
+EXTRACT_STATIC         = NO
+HIDE_UNDOC_MEMBERS     = NO
+HIDE_UNDOC_CLASSES     = NO
+
+GENERATE_HTML          = YES
+GENERATE_LATEX         = NO
+HTML_OUTPUT            = html
+
+SOURCE_BROWSER         = YES
+INLINE_SOURCES         = NO
+STRIP_FROM_PATH        = .
+
+JAVADOC_AUTOBRIEF      = YES
+QT_AUTOBRIEF           = NO
+MULTILINE_CPP_IS_BRIEF = NO
+
+WARN_IF_UNDOCUMENTED   = YES
+WARN_AS_ERROR          = NO

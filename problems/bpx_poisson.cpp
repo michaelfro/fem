@@ -19,6 +19,17 @@ using fem::mesh::hierarchical::LevelData;
 using fem::problems::poisson::assemble_system;
 using fem::problems::poisson::lin_system;
 
+/**
+ * @brief Builds a nested mesh hierarchy from progressively refined VTK meshes.
+ *
+ * The returned structure maps every level's nodes into the finest mesh and
+ * records the midpoint nodes introduced between adjacent levels. The input
+ * meshes are expected to be nested red refinements, so each new node on level
+ * `k + 1` is the midpoint of an edge on level `k`.
+ *
+ * @param vtk_files Mesh files ordered from coarsest to finest.
+ * @return Hierarchical mesh data used by the BPX preconditioner experiment.
+ */
 HierarchicalMesh build_hierarchical_mesh(const std::vector<std::string> &vtk_files) {
 
     HierarchicalMesh hm;
@@ -128,6 +139,15 @@ HierarchicalMesh build_hierarchical_mesh(const std::vector<std::string> &vtk_fil
     return hm;
 }
 
+/**
+ * @brief Creates a diagonal BPX-style preconditioner action on the finest mesh.
+ *
+ * @param hm Hierarchical mesh data containing coarse-to-fine mappings and inverse diagonals.
+ * @return Callable that applies the current BPX approximation to a residual vector.
+ *
+ * @note This is currently a componentwise approximation, not a full
+ * `sum_l P_l D_l^{-1} P_l^T` BPX application.
+ */
 auto create_bpx(HierarchicalMesh &hm) {
 
     std::vector<double> bpx(hm.fine_mesh.nodes.size(), 0.0);
