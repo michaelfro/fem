@@ -13,7 +13,9 @@ add_compile_options(
 
 file(GLOB_RECURSE FEM_SOURCES
     src/*.cpp
-    problems/*.cpp
+)
+list(APPEND FEM_SOURCES
+    problems/poisson.cpp
 )
 
 add_library(fem ${FEM_SOURCES})
@@ -25,3 +27,9 @@ add_executable(poisson
 )
 
 target_link_libraries(poisson PRIVATE fem)
+
+add_executable(multigrid_poisson
+    problems/multigrid_poisson.cpp
+)
+
+target_link_libraries(multigrid_poisson PRIVATE fem)
