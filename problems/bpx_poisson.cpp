@@ -170,52 +170,31 @@ auto create_bpx(HierarchicalMesh &hm) {
                 // bpx[mid.fine_index] += 0.5 * (ld.inv_diag[mid.coarse_parent_1] +
                 // ld.inv_diag[mid.coarse_parent_2]); // parents are at level k,
                 // midpoint at k + 1
-                bpx[mid.fine_index] += 0.5 * (bpx[ld.coarse_to_fine[mid.coarse_parent_1]] + bpx[ld.coarse_to_fine[mid.coarse_parent_2]
-            }); // parents are at level k, midpoint at k + 1
+                bpx[mid.fine_index] +=
+                    0.5 * (bpx[ld.coarse_to_fine[mid.coarse_parent_1]] +
+                           bpx[ld.coarse_to_fine[mid.coarse_parent_2]]); // parents are at level k,
+                                                                         // midpoint at k + 1
+            }
         }
     }
-}
 
-// debug
-// check
-// if all
-// bpx
-// values
-// are
-// positive
-// - spd
-// precond
-for (auto val : bpx) {
-    if (val < 0) {
-        std::cout << "Oh no, bad values in bpx\n";
+    // debug check if all bpx values are spd
+    for (auto val : bpx) {
+        if (val < 0) {
+            std::cout << "Oh no, bad values in bpx\n";
+        }
     }
-}
 
-// return
-// a
-// function
-// that
-// returns
-// componentwise
-// multiplication
-// with
-// this
-// vector
-// - Max
-// uses
-// the
-// restriction
-// transposed
-// to
-// prolongate
-return [bpx](const std::vector<double> &r) -> std::vector<double> {
-    assert(bpx.size() == r.size());
-    std::vector<double> result(r.size());
-    for (size_t i = 0; i < bpx.size(); ++i) {
-        result[i] = bpx[i] * r[i];
-    }
-    return result;
-};
+    // return a function that returns componentwise multiplication with this vector - Max uses the
+    // restriction transposed to prolongate
+    return [bpx](const std::vector<double> &r) -> std::vector<double> {
+        assert(bpx.size() == r.size());
+        std::vector<double> result(r.size());
+        for (size_t i = 0; i < bpx.size(); ++i) {
+            result[i] = bpx[i] * r[i];
+        }
+        return result;
+    };
 }
 
 int main() {
