@@ -7,137 +7,17 @@
 #include <fem/linalg/CSRMatrix.hpp>
 #include <fem/linalg/Vector.hpp>
 #include <fem/linalg/cg.hpp>
+#include <fem/mesh/hierarchy.hpp>
 #include <fem/mesh/mesh.hpp>
 #include <fem/problems/poisson.hpp>
 #include <iostream>
-#include <map>
 #include <vector>
 
 using fem::linalg::csr_matrix;
+using fem::mesh::hierarchical::build_hierarchical_mesh;
 using fem::mesh::hierarchical::HierarchicalMesh;
-using fem::mesh::hierarchical::LevelData;
 using fem::problems::poisson::assemble_system;
 using fem::problems::poisson::lin_system;
-
-/**
- * @brief Builds a nested mesh hierarchy from progressively refined VTK meshes.
- *
- * The returned structure maps every level's nodes into the finest mesh and
- * records the midpoint nodes introduced between adjacent levels. The input
- * meshes are expected to be nested red refinements, so each new node on level
- * `k + 1` is the midpoint of an edge on level `k`.
- *
- * @param vtk_files Mesh files ordered from coarsest to finest.
- * @return Hierarchical mesh data used by the BPX preconditioner experiment.
- */
-HierarchicalMesh build_hierarchical_mesh(const std::vector<std::string> &vtk_files) {
-
-    HierarchicalMesh hm;
-
-    // Load all meshes
-    std::vector<fem::mesh::triangular_2d::Mesh> meshes;
-    for (auto &f : vtk_files)
-        meshes.push_back(fem::io::read_mesh_2d(f));
-
-    hm.fine_mesh = meshes.back();
-    int n_fine = hm.fine_mesh.nodes.size();
-
-    // Build coordinate lookup for finest mesh:
-    auto make_key = [](double x, double y) -> std::pair<long, long> {
-        // The VTK meshes store coordinates with about six decimal digits.
-        // Use a slightly coarser key so computed midpoints match stored nodes.
-        constexpr double coordinate_scale = 1e5;
-        return {std::llround(x * coordinate_scale), std::llround(y * coordinate_scale)};
-    };
-
-    std::map<std::pair<long, long>, int> fine_lookup;
-    for (int i = 0; i < n_fine; ++i) {
-        auto [x, y] = hm.fine_mesh.nodes[i];
-        fine_lookup[make_key(x, y)] = i;
-    }
-
-    hm.midpoints.resize(meshes.size() - 1);
-
-    // loop over the meshes:
-    for (size_t k = 0; k < meshes.size(); ++k) {
-        auto &mesh_k = meshes[k];
-        int n_coarse = mesh_k.nodes.size();
-
-        LevelData ld;
-        ld.level = static_cast<int>(k);
-        ld.n_nodes = n_coarse;
-        ld.coarse_to_fine.resize(n_coarse);
-        ld.fine_to_coarse.assign(n_fine, -1);
-
-        // Compute inverse diagonal of coarse stiffness matrix
-        const auto coarse_matrix = assemble_system(mesh_k).stiffness_matrix;
-        auto diag = fem::linalg::get_diag(coarse_matrix).values;
-        for (auto &ele : diag) {
-            ele = 1 / ele;
-        }
-        ld.inv_diag = std::move(diag);
-
-        // Map coarse nodes to fine nodes
-        for (int i = 0; i < n_coarse; ++i) {
-            auto [x, y] = mesh_k.nodes[i];
-            auto key = make_key(x, y);
-            int fi = fine_lookup.at(key);
-            ld.coarse_to_fine[i] = fi;
-            ld.fine_to_coarse[fi] = i;
-        }
-
-        // Find midpoints introduced at this level transition
-        if (k + 1 < meshes.size()) {
-            auto &mesh_next = meshes[k + 1];
-
-            // Build midpoint-to-parents lookup for all coarse edges.
-            std::map<std::pair<long, long>, std::pair<int, int>> midpoint_to_parents;
-
-            for (auto &tri : mesh_k.elements) {
-                std::array<std::pair<int, int>, 3> edges = {std::make_pair(tri[0], tri[1]),
-                                                            std::make_pair(tri[1], tri[2]),
-                                                            std::make_pair(tri[0], tri[2])};
-                for (auto [a, b] : edges) {
-                    double mx = 0.5 * (mesh_k.nodes[a][0] + mesh_k.nodes[b][0]);
-                    double my = 0.5 * (mesh_k.nodes[a][1] + mesh_k.nodes[b][1]);
-                    midpoint_to_parents[make_key(mx, my)] = {a, b};
-                }
-            }
-
-            for (int i = 0; i < (int)mesh_next.nodes.size();
-                 ++i) { // for all nodes in the next finer mesh
-                auto [x, y] = mesh_next.nodes[i];
-                int fi = fine_lookup.at(make_key(x,
-                                                 y)); // find fine_index for that
-                                                      // node
-
-                if (ld.fine_to_coarse[fi] == -1) { // if that node is not in the coarse mesh
-
-                    auto parents = midpoint_to_parents.find(make_key(x, y));
-                    if (parents == midpoint_to_parents.end()) {
-                        throw std::runtime_error("Could not find parents for new node at level " +
-                                                 std::to_string(k + 1));
-                    }
-                    auto [a, b] = parents->second;
-                    hm.midpoints[k].push_back({fi, a, b});
-                }
-            }
-
-            // assert(ld.n_nodes + hm.midpoints[k].size() == mesh_next.nodes.size());
-
-            if (hm.midpoints[k].size() + n_coarse < mesh_next.nodes.size()) {
-                std::cout << "Problem with midpoint size.\n"
-                          << "We have " << hm.midpoints[k].size() << " midpoints and " << n_coarse
-                          << " coarse nodes but the next level has " << meshes[k + 1].nodes.size()
-                          << " nodes.\n";
-            }
-        }
-
-        hm.levels.push_back(std::move(ld));
-    }
-
-    return hm;
-}
 
 /**
  * @brief Creates a diagonal BPX-style preconditioner action on the finest mesh.
@@ -145,45 +25,28 @@ HierarchicalMesh build_hierarchical_mesh(const std::vector<std::string> &vtk_fil
  * @param hm Hierarchical mesh data containing coarse-to-fine mappings and inverse diagonals.
  * @return Callable that applies the current BPX approximation to a residual vector.
  *
- * @note This is currently a componentwise approximation, not a full
- * `sum_l P_l D_l^{-1} P_l^T` BPX application.
+ * @note This is currently a componentwise approximation. Full BPX should use the reusable
+ * prolongation and restriction functions from `fem::mesh::hierarchical`.
  */
 auto create_bpx(HierarchicalMesh &hm) {
 
     std::vector<double> bpx(hm.fine_mesh.nodes.size(), 0.0);
 
     for (size_t level = 0; level < hm.levels.size(); ++level) {
+        const auto &ld = hm.levels[level];
 
-        auto &ld = hm.levels[level]; // LevelData
-
-        // Coarse contribution
         for (int i = 0; i < ld.n_nodes; ++i) {
             bpx[ld.coarse_to_fine[i]] += ld.inv_diag[i];
         }
 
-        // Midpoint contribution in the next level - todo fix this
-        if (level + 1 < hm.levels.size()) { // if we have midpoints - finest level has no children
-            for (auto &mid : hm.midpoints[level]) {
-                // bpx[mid.fine_index] += 0.5 * (ld.inv_diag[mid.coarse_parent_1] +
-                // ld.inv_diag[mid.coarse_parent_2]); // parents are at level k,
-                // midpoint at k + 1
-                bpx[mid.fine_index] +=
-                    0.5 * (bpx[ld.coarse_to_fine[mid.coarse_parent_1]] +
-                           bpx[ld.coarse_to_fine[mid.coarse_parent_2]]); // parents are at level k,
-                                                                         // midpoint at k + 1
+        if (level + 1 < hm.levels.size()) {
+            for (const auto &mid : hm.midpoints[level]) {
+                bpx[mid.fine_index] += 0.5 * (bpx[ld.coarse_to_fine[mid.coarse_parent_1]] +
+                                              bpx[ld.coarse_to_fine[mid.coarse_parent_2]]);
             }
         }
     }
 
-    // debug check if all bpx values are spd
-    for (auto val : bpx) {
-        if (val < 0) {
-            std::cout << "Oh no, bad values in bpx\n";
-        }
-    }
-
-    // return a function that returns componentwise multiplication with this vector - Max uses the
-    // restriction transposed to prolongate
     return [bpx](const std::vector<double> &r) -> std::vector<double> {
         assert(bpx.size() == r.size());
         std::vector<double> result(r.size());
@@ -232,7 +95,9 @@ int main() {
               << fem::problems::poisson::nodal_l2_error(hm.fine_mesh, solution_bpx.solution)
               << "\n";
 
-    fem::io::write_solution_csv_2d(solution_bpx, hm.fine_mesh, "poisson_bpx.csv");
+    fem::io::write_solution_vtk_2d(solution_bpx, hm.fine_mesh, "poisson_bpx.vtk");
+    fem::io::write_error(solution_bpx, hm.fine_mesh, fem::problems::poisson::analytical_solution,
+                         "poisson_bpx_error.vtk");
 
     return 0;
 }

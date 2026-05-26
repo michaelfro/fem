@@ -31,6 +31,21 @@ void write_solution_csv_2d(fem::linalg::cg::solution solution, fem::mesh::triang
                            const std::string &filename);
 
 /**
+ * @brief Writes a nodal solution to a legacy ASCII VTK PolyData file.
+ *
+ * The output contains the input triangular mesh and one point scalar field named
+ * `solution`.
+ *
+ * @param solution Solver result containing nodal values.
+ * @param mesh Mesh whose node coordinates correspond to the solution entries.
+ * @param filename Name of the VTK file to create below `../output`.
+ * @throws std::runtime_error If the solution size does not match the mesh or the file cannot be
+ * opened.
+ */
+void write_solution_vtk_2d(const fem::linalg::cg::solution &solution,
+                           const fem::mesh::triangular_2d::Mesh &mesh, const std::string &filename);
+
+/**
  * @brief Prints a nodal solution.
  *
  * @param solution Solver result containing nodal values.
@@ -41,13 +56,27 @@ void write_solution_csv_2d(fem::linalg::cg::solution solution, fem::mesh::triang
 void print_solution(fem::linalg::cg::solution solution, fem::mesh::triangular_2d::Mesh mesh);
 
 /**
- * @brief Writes or reports solution error against an analytical reference.
+ * @brief Writes solution, analytical reference, and nodal error to a VTK file.
  *
  * @param solution Solver result containing nodal values.
  * @param mesh Mesh whose node coordinates correspond to the solution entries.
  * @param analytical_solution Function used as the exact solution.
+ * @param filename Name of the VTK file to create below `../output`.
+ * @throws std::runtime_error If the solution size does not match the mesh or the file cannot be
+ * opened.
+ */
+void write_error(const fem::linalg::cg::solution &solution,
+                 const fem::mesh::triangular_2d::Mesh &mesh, Function_2D analytical_solution,
+                 const std::string &filename);
+
+/**
+ * @brief Writes solution error against an analytical reference to a default VTK file.
  *
- * @note This function is currently a placeholder.
+ * The default output filename is `solution_error.vtk`.
+ *
+ * @param solution Solver result containing nodal values.
+ * @param mesh Mesh whose node coordinates correspond to the solution entries.
+ * @param analytical_solution Function used as the exact solution.
  */
 void write_error(fem::linalg::cg::solution solution, fem::mesh::triangular_2d::Mesh mesh,
                  Function_2D analytical_solution);
