@@ -13,6 +13,8 @@
 #include <string>
 #include <vector>
 
+using fem::linalg::vector::vector_sum;
+
 namespace {
 
 struct MultigridLevel {
@@ -28,7 +30,7 @@ std::vector<double> compute_residual(const fem::linalg::csr_matrix &matrix,
     std::vector<double> Ax(x.size(), 0.0);
     std::vector<double> residual(x.size(), 0.0);
     fem::linalg::matrix_vector_product(matrix, x, Ax);
-    fem::linalg::vector::vector_sum(1.0, rhs, -1.0, Ax, residual);
+    vector_sum(1.0, rhs, -1.0, Ax, residual);
     return residual;
 }
 
@@ -66,13 +68,6 @@ MultigridLevel assemble_unit_poisson_system(const fem::mesh::triangular_2d::Mesh
     fem::problems::poisson::lin_system system =
         fem::problems::poisson::assemble_system(mesh, constant_rhs);
     return {mesh, system.stiffness_matrix, system.rhs};
-}
-
-void add_in_place(std::vector<double> &x, const std::vector<double> &correction) {
-    assert(x.size() == correction.size());
-    for (size_t i = 0; i < x.size(); ++i) {
-        x[i] += correction[i];
-    }
 }
 
 /**
@@ -113,7 +108,7 @@ void multigrid_v_cycle(const std::vector<MultigridLevel> &levels,
 
     const std::vector<double> fine_error =
         fem::mesh::hierarchical::prolongate_to_next_level(hierarchy, level - 1, coarse_error);
-    add_in_place(x, fine_error);
+    vector_sum(1, x, 1, fine_error, x);
 
     gauss_seidel(level_data.stiffness_matrix, rhs, x, nu2);
 }
