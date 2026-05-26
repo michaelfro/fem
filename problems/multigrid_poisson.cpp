@@ -1,5 +1,3 @@
-#include <algorithm>
-#include <array>
 #include <cassert>
 #include <cmath>
 #include <cstddef>
@@ -9,7 +7,6 @@
 #include <fem/linalg/Vector.hpp>
 #include <fem/linalg/cg.hpp>
 #include <fem/mesh/hierarchy.hpp>
-#include <fem/mesh/mesh.hpp>
 #include <fem/problems/poisson.hpp>
 #include <iostream>
 #include <stdexcept>
@@ -65,120 +62,10 @@ void gauss_seidel(const fem::linalg::csr_matrix &matrix, const std::vector<doubl
     }
 }
 
-fem::linalg::csr_matrix compress_triplets(std::vector<fem::problems::poisson::triplet> triplets,
-                                          size_t n_rows) {
-    std::sort(triplets.begin(), triplets.end(), [](const auto &a, const auto &b) {
-        if (a.global_row == b.global_row) {
-            return a.global_col < b.global_col;
-        }
-        return a.global_row < b.global_row;
-    });
-
-    std::vector<fem::problems::poisson::triplet> compressed;
-    compressed.reserve(triplets.size());
-
-    for (size_t i = 0; i < triplets.size(); ++i) {
-        const size_t row = triplets[i].global_row;
-        const size_t col = triplets[i].global_col;
-        double sum = 0.0;
-
-        size_t j = i;
-        while (j < triplets.size() && triplets[j].global_row == row &&
-               triplets[j].global_col == col) {
-            sum += triplets[j].contribution;
-            ++j;
-        }
-
-        if (std::abs(sum) > 1e-12) {
-            compressed.push_back({row, col, sum});
-        }
-        i = j - 1;
-    }
-
-    fem::linalg::csr_matrix matrix;
-    matrix.row_index.assign(n_rows + 1, 0);
-    matrix.values.reserve(compressed.size());
-    matrix.col_index.reserve(compressed.size());
-
-    size_t current_row = 0;
-    for (const auto &triplet : compressed) {
-        while (current_row < triplet.global_row) {
-            matrix.row_index[current_row + 1] = matrix.values.size();
-            ++current_row;
-        }
-
-        matrix.values.push_back(triplet.contribution);
-        matrix.col_index.push_back(triplet.global_col);
-    }
-
-    while (current_row < n_rows) {
-        matrix.row_index[current_row + 1] = matrix.values.size();
-        ++current_row;
-    }
-
-    return matrix;
-}
-
 MultigridLevel assemble_unit_poisson_system(const fem::mesh::triangular_2d::Mesh &mesh) {
-    std::vector<double> rhs(mesh.nodes.size(), 0.0);
-    std::vector<fem::problems::poisson::triplet> triplets;
-    triplets.reserve(9 * mesh.elements.size());
-
-    for (const auto &element : mesh.elements) {
-        const std::array<double, 2> p1 = mesh.nodes[element[0]];
-        const std::array<double, 2> p2 = mesh.nodes[element[1]];
-        const std::array<double, 2> p3 = mesh.nodes[element[2]];
-
-        const double J[2][2] = {
-            {p2[0] - p1[0], p3[0] - p1[0]},
-            {p2[1] - p1[1], p3[1] - p1[1]},
-        };
-
-        const double det_J = J[0][0] * J[1][1] - J[1][0] * J[0][1];
-        assert(std::abs(det_J) > 1e-12);
-
-        const double area = 0.5 * std::abs(det_J);
-
-        const double inv_J_transposed[2][2] = {
-            {J[1][1] / det_J, -J[1][0] / det_J},
-            {-J[0][1] / det_J, J[0][0] / det_J},
-        };
-
-        const double grad_ref[3][2] = {{-1.0, -1.0}, {1.0, 0.0}, {0.0, 1.0}};
-        double grad_basis[3][2];
-
-        for (int i = 0; i < 3; ++i) {
-            grad_basis[i][0] =
-                inv_J_transposed[0][0] * grad_ref[i][0] + inv_J_transposed[0][1] * grad_ref[i][1];
-            grad_basis[i][1] =
-                inv_J_transposed[1][0] * grad_ref[i][0] + inv_J_transposed[1][1] * grad_ref[i][1];
-        }
-
-        for (int i = 0; i < 3; ++i) {
-            for (int j = 0; j < 3; ++j) {
-                const double dot =
-                    grad_basis[i][0] * grad_basis[j][0] + grad_basis[i][1] * grad_basis[j][1];
-                triplets.push_back(
-                    {static_cast<size_t>(element[i]), static_cast<size_t>(element[j]), area * dot});
-            }
-        }
-
-        const std::array<double, 2> centroid = {
-            (p1[0] + p2[0] + p3[0]) / 3.0,
-            (p1[1] + p2[1] + p3[1]) / 3.0,
-        };
-        const double load = area * constant_rhs(centroid[0], centroid[1]) / 3.0;
-
-        rhs[element[0]] += load;
-        rhs[element[1]] += load;
-        rhs[element[2]] += load;
-    }
-
-    fem::linalg::csr_matrix stiffness_matrix =
-        compress_triplets(std::move(triplets), mesh.nodes.size());
-    fem::problems::poisson::impose_boundary_conditions(rhs, stiffness_matrix, mesh);
-
-    return {mesh, stiffness_matrix, rhs};
+    fem::problems::poisson::lin_system system =
+        fem::problems::poisson::assemble_system(mesh, constant_rhs);
+    return {mesh, system.stiffness_matrix, system.rhs};
 }
 
 void add_in_place(std::vector<double> &x, const std::vector<double> &correction) {

@@ -21,6 +21,11 @@
 namespace fem::problems::poisson {
 
 /**
+ * @brief Function pointer type for scalar right-hand sides.
+ */
+using rhs_function = double (*)(double, double);
+
+/**
  * @brief Sparse assembly entry before compression into CSR format.
  */
 struct triplet {
@@ -106,6 +111,18 @@ void impose_boundary_conditions(std::vector<double> &rhs, fem::linalg::csr_matri
 local_result local_contribution(const fem::mesh::triangular_2d::Mesh mesh);
 
 /**
+ * @brief Computes local finite element contributions for a custom right-hand side.
+ *
+ * Uses linear triangular basis functions and centroid quadrature for the load
+ * vector.
+ *
+ * @param mesh Triangular mesh to assemble on.
+ * @param rhs Function used for the load vector.
+ * @return Triplet stiffness contributions and the assembled load vector.
+ */
+local_result local_contribution(const fem::mesh::triangular_2d::Mesh mesh, rhs_function rhs);
+
+/**
  * @brief Assembles the global Poisson linear system.
  *
  * The function computes local contributions, compresses duplicate matrix
@@ -116,6 +133,15 @@ local_result local_contribution(const fem::mesh::triangular_2d::Mesh mesh);
  * @return Assembled stiffness matrix and right-hand side.
  */
 lin_system assemble_system(const fem::mesh::triangular_2d::Mesh mesh);
+
+/**
+ * @brief Assembles the global Poisson linear system for a custom right-hand side.
+ *
+ * @param mesh Triangular mesh to assemble on.
+ * @param rhs Function used for the load vector.
+ * @return Assembled stiffness matrix and right-hand side.
+ */
+lin_system assemble_system(const fem::mesh::triangular_2d::Mesh mesh, rhs_function rhs);
 
 /**
  * @brief Analytical reference solution for the model problem.

@@ -69,6 +69,10 @@ void impose_boundary_conditions(std::vector<double> &rhs, fem::linalg::csr_matri
 }
 
 local_result local_contribution(const fem::mesh::triangular_2d::Mesh mesh) {
+    return local_contribution(mesh, f);
+}
+
+local_result local_contribution(const fem::mesh::triangular_2d::Mesh mesh, rhs_function rhs_f) {
 
     std::vector<double> rhs(mesh.nodes.size(), 0.);
     std::vector<triplet> local_contributions;
@@ -145,7 +149,7 @@ local_result local_contribution(const fem::mesh::triangular_2d::Mesh mesh) {
         double c[2];
         c[0] = (p1[0] + p2[0] + p3[0]) / 3;
         c[1] = (p1[1] + p2[1] + p3[1]) / 3;
-        double f_c = f(c[0], c[1]);
+        double f_c = rhs_f(c[0], c[1]);
         double val = (area / 3.0) * f_c;
 
         rhs[ele[0]] += val;
@@ -156,8 +160,12 @@ local_result local_contribution(const fem::mesh::triangular_2d::Mesh mesh) {
 }
 
 lin_system assemble_system(const fem::mesh::triangular_2d::Mesh mesh) {
+    return assemble_system(mesh, f);
+}
 
-    local_result local_res = local_contribution(mesh);
+lin_system assemble_system(const fem::mesh::triangular_2d::Mesh mesh, rhs_function rhs_f) {
+
+    local_result local_res = local_contribution(mesh, rhs_f);
 
     std::vector<triplet> local_contributions = local_res.local_contributions;
     std::vector<double> rhs = local_res.rhs;
