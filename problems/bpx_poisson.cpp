@@ -23,9 +23,7 @@ HierarchicalMesh build_hierarchical_mesh(const std::vector<std::string> &vtk_fil
 
     HierarchicalMesh hm;
 
-    // Load
-    // all
-    // meshes
+    // Load all meshes
     std::vector<fem::mesh::triangular_2d::Mesh> meshes;
     for (auto &f : vtk_files)
         meshes.push_back(fem::io::read_mesh_2d(f));
@@ -33,14 +31,12 @@ HierarchicalMesh build_hierarchical_mesh(const std::vector<std::string> &vtk_fil
     hm.fine_mesh = meshes.back();
     int n_fine = hm.fine_mesh.nodes.size();
 
-    // Build
-    // coordinate
-    // lookup
-    // for
-    // finest
-    // mesh:
+    // Build coordinate lookup for finest mesh:
     auto make_key = [](double x, double y) -> std::pair<long, long> {
-        return {std::llround(x * 1e10), std::llround(y * 1e10)};
+        // The VTK meshes store coordinates with about six decimal digits.
+        // Use a slightly coarser key so computed midpoints match stored nodes.
+        constexpr double coordinate_scale = 1e5;
+        return {std::llround(x * coordinate_scale), std::llround(y * coordinate_scale)};
     };
 
     std::map<std::pair<long, long>, int> fine_lookup;
@@ -51,16 +47,13 @@ HierarchicalMesh build_hierarchical_mesh(const std::vector<std::string> &vtk_fil
 
     hm.midpoints.resize(meshes.size() - 1);
 
-    // loop
-    // over
-    // the
-    // meshes:
-    for (int k = 0; k < meshes.size(); ++k) {
+    // loop over the meshes:
+    for (size_t k = 0; k < meshes.size(); ++k) {
         auto &mesh_k = meshes[k];
         int n_coarse = mesh_k.nodes.size();
 
         LevelData ld;
-        ld.level = k;
+        ld.level = static_cast<int>(k);
         ld.n_nodes = n_coarse;
         ld.coarse_to_fine.resize(n_coarse);
         ld.fine_to_coarse.assign(n_fine, -1);
@@ -86,22 +79,19 @@ HierarchicalMesh build_hierarchical_mesh(const std::vector<std::string> &vtk_fil
         if (k + 1 < meshes.size()) {
             auto &mesh_next = meshes[k + 1];
 
-            // Build edge to parents lookup
-            std::map<std::pair<int, int>, std::pair<int, int>> edge_to_parents;
+            // Build midpoint-to-parents lookup for all coarse edges.
+            std::map<std::pair<long, long>, std::pair<int, int>> midpoint_to_parents;
 
             for (auto &tri : mesh_k.elements) {
                 std::array<std::pair<int, int>, 3> edges = {std::make_pair(tri[0], tri[1]),
                                                             std::make_pair(tri[1], tri[2]),
                                                             std::make_pair(tri[0], tri[2])};
                 for (auto [a, b] : edges) {
-                    auto key = std::make_pair(std::min(a, b), std::max(a, b));
-                    edge_to_parents[key] = {a, b};
+                    double mx = 0.5 * (mesh_k.nodes[a][0] + mesh_k.nodes[b][0]);
+                    double my = 0.5 * (mesh_k.nodes[a][1] + mesh_k.nodes[b][1]);
+                    midpoint_to_parents[make_key(mx, my)] = {a, b};
                 }
             }
-
-            // For each new node at level k+1, find its two coarse parents by checking
-            // all edges — the midpoint lies between the two coarse nodes whose
-            // fine indices bracket it
 
             for (int i = 0; i < (int)mesh_next.nodes.size();
                  ++i) { // for all nodes in the next finer mesh
@@ -112,26 +102,13 @@ HierarchicalMesh build_hierarchical_mesh(const std::vector<std::string> &vtk_fil
 
                 if (ld.fine_to_coarse[fi] == -1) { // if that node is not in the coarse mesh
 
-                    // Find the edge whose midpoint this is by checking all coarse edges
-                    bool found = false;
-
-                    for (auto &[edge_key, parents] : edge_to_parents) {
-                        auto [a, b] = parents;
-                        int fi_a = ld.coarse_to_fine[a];
-                        int fi_b = ld.coarse_to_fine[b];
-                        double mx =
-                            (hm.fine_mesh.nodes[fi_a][0] + hm.fine_mesh.nodes[fi_b][0]) / 2.0;
-                        double my =
-                            (hm.fine_mesh.nodes[fi_a][1] + hm.fine_mesh.nodes[fi_b][1]) / 2.0;
-                        if (make_key(mx, my) == make_key(x, y)) {
-                            hm.midpoints[k].push_back({fi, a, b});
-                            found = true;
-                            break;
-                        }
-                    }
-                    if (!found)
+                    auto parents = midpoint_to_parents.find(make_key(x, y));
+                    if (parents == midpoint_to_parents.end()) {
                         throw std::runtime_error("Could not find parents for new node at level " +
                                                  std::to_string(k + 1));
+                    }
+                    auto [a, b] = parents->second;
+                    hm.midpoints[k].push_back({fi, a, b});
                 }
             }
 
@@ -160,7 +137,7 @@ auto create_bpx(HierarchicalMesh &hm) {
         auto &ld = hm.levels[level]; // LevelData
 
         // Coarse contribution
-        for (size_t i = 0; i < ld.n_nodes; ++i) {
+        for (int i = 0; i < ld.n_nodes; ++i) {
             bpx[ld.coarse_to_fine[i]] += ld.inv_diag[i];
         }
 
