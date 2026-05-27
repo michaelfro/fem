@@ -78,8 +78,8 @@ MultigridLevel assemble_unit_poisson_system(const fem::mesh::triangular_2d::Mesh
  * @param level Current zero-based level.
  * @param x Current approximation on @p level, modified in place.
  * @param rhs Right-hand side on @p level.
- * @param nu1 Number of pre-smoothing Gauss-Seidel sweeps.
- * @param nu2 Number of post-smoothing Gauss-Seidel sweeps.
+ * @param nu1 Number of pre-smoothing Gauss-Seidel steps.
+ * @param nu2 Number of post-smoothing Gauss-Seidel steps.
  */
 void multigrid_v_cycle(const std::vector<MultigridLevel> &levels,
                        const fem::mesh::hierarchical::HierarchicalMesh &hierarchy, size_t level,
