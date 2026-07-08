@@ -170,7 +170,7 @@ lin_system assemble_system(const fem::mesh::triangular_2d::Mesh mesh, rhs_functi
     std::vector<triplet> local_contributions = local_res.local_contributions;
     std::vector<double> rhs = local_res.rhs;
 
-    // std::sort magic to sort first by row then column
+    // stl sort magic to sort first by row then column
     std::sort(local_contributions.begin(), local_contributions.end(),
               [](const triplet &a, const triplet &b) {
                   if (a.global_row == b.global_row)
